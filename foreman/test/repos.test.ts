@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Decision } from '../src/protocol.js';
 import { MERGE_OPTIONS } from '../src/protocol.js';
 import { git, gitOut } from '../src/util/git.js';
+import { parseTestOutput } from '../src/repos.js';
 import { demoRepo, makeForeman, rmrf, tempDir, type Harness } from './helpers.js';
 
 let h: Harness;
@@ -251,11 +252,61 @@ describe('RepoManager', () => {
     }
   });
 
+  it.each([
+    ['diff.mnemonicPrefix', 'true'],
+    ['diff.noprefix', 'true'],
+    ['diff.srcPrefix', 'SRC/'],
+  ])('reports repo-relative paths when the user sets %s=%s', async (key, value) => {
+    const repo = await demoRepo();
+    try {
+      execFileSync('git', ['config', key, value], { cwd: repo, stdio: 'pipe' });
+      const r = await h.fm.repos.add(repo);
+      const t = h.fm.tasks.create({ title: 'Prefix config', createdBy: 'marlow', repoId: r.id, assignee: 'kit' });
+      const wt = await h.fm.repos.createWorktree(r.id, 'kit', t);
+      fs.appendFileSync(path.join(wt.path, 'src', 'cli.ts'), '// changed\n');
+      fs.rmSync(path.join(wt.path, 'README.md'));
+      fs.mkdirSync(path.join(wt.path, 'b'));
+      fs.writeFileSync(path.join(wt.path, 'b', 'notes.md'), 'new\n');
+      const d = await h.fm.repos.diff(r.id, wt.id);
+      expect(d.files.map((f) => [f.path, f.status])).toEqual([['README.md', 'deleted'], ['b/notes.md', 'added'], ['src/cli.ts', 'modified']]);
+    } finally {
+      rmrf(path.dirname(repo));
+    }
+  });
+
   it('runs the repo test command and reports failures', async () => {
     const res = await h.fm.repos.runTests('demo-app');
     expect(res.pass).toBe(true);
     expect(res.summary).toMatch(/pass \d+/);
     expect(res.failures).toEqual([]);
+  });
+});
+
+describe('parseTestOutput', () => {
+  it('reads node:test spec-reporter output', () => {
+    const out = [
+      '✔ ok one (0.927721ms)',
+      '✖ bad # two (1.382734ms)',
+      '▶ grp',
+      '  ✖ inner bad (0.318354ms)',
+      '✖ grp (0.727085ms)',
+      'ℹ tests 3',
+      'ℹ suites 1',
+      'ℹ pass 1',
+      'ℹ fail 2',
+      '',
+      '✖ failing tests:',
+      '',
+      'test at a.test.mjs:4:1',
+      '✖ bad # two (1.382734ms)',
+      '  AssertionError [ERR_ASSERTION]: 1 == 2',
+    ].join('\n');
+    expect(parseTestOutput(out)).toEqual({ failures: ['bad # two', 'inner bad', 'grp'], summary: 'tests 3, pass 1, fail 2' });
+  });
+
+  it('reads TAP output', () => {
+    const out = 'TAP version 13\nok 1 - ok one\nnot ok 2 - bad \\# two\n1..2\n# tests 2\n# pass 1\n# fail 1\n';
+    expect(parseTestOutput(out)).toEqual({ failures: ['bad # two'], summary: 'tests 2, pass 1, fail 1' });
   });
 });
 
