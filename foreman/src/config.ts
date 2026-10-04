@@ -36,6 +36,8 @@ export interface ClaudeConfig {
    * only: Anthropic does not allow third-party tools to offer claude.ai login (see agents/claude/auth.ts).
    */
   useClaudeLogin: boolean;
+  /** command prefixes the lead runs without asking, e.g. `bd show` */
+  leadReadCommands: string[];
 }
 
 export type ShowcaseCheckpoint = 'showcase' | 'showcase-late';
@@ -133,6 +135,12 @@ function str(v: unknown): string | undefined {
   return typeof v === 'string' && v.length ? v : undefined;
 }
 
+/** Comma list (flag, env) or array (config.json). */
+function list(v: unknown): string[] {
+  const items = Array.isArray(v) ? v.map(String) : typeof v === 'string' ? v.split(',') : [];
+  return items.map((s) => s.trim()).filter(Boolean);
+}
+
 function mergeStyle(v: unknown): 'merge' | 'squash' {
   if (v === undefined || v === 'merge') return 'merge';
   if (v === 'squash') return 'squash';
@@ -152,7 +160,7 @@ export const KNOWN_FLAGS = new Set([
   'toast-silent', 'debug', 'quiet', 'allow-browser-origins', 'repo-poll-ms', 'merge-style', 'sign-merges',
   'lead-model', 'worker-model', 'effort', 'lead-effort', 'max-turns', 'max-turns-lead', 'max-turns-worker',
   'max-concurrent', 'ci', 'max-budget', 'resume', 'lead-review', 'speed', 'seed', 'showcase', 'auto-answer',
-  'ambient',
+  'ambient', 'lead-read-commands',
 ]);
 
 /**
@@ -234,6 +242,7 @@ export function loadConfig(argv: string[], env: NodeJS.ProcessEnv = process.env)
       resumeOnStart: bool(flags.resume ?? fileClaude.resumeOnStart, true),
       leadReview: bool(flags['lead-review'] ?? fileClaude.leadReview, true),
       useClaudeLogin: bool(flags['use-claude-login'] ?? env.AGENTCRAFT_USE_CLAUDE_LOGIN ?? fileClaude.useClaudeLogin, false),
+      leadReadCommands: list(flags['lead-read-commands'] ?? env.AGENTCRAFT_LEAD_READ_COMMANDS ?? fileClaude.leadReadCommands),
     },
     sim: {
       speed: Math.max(0.05, num(flags.speed ?? env.AGENTCRAFT_SIM_SPEED ?? fileSim.speed, 1)),
@@ -291,6 +300,9 @@ usage: npm run start -- [options]
   --max-concurrent <n>     workers running at once (default 3)
   --max-budget <usd>       per-turn USD cap
   --ci "<cmd>"             test command run after each task (default: detected, e.g. npm test)
+  --lead-read-commands "<cmd>,..."
+                           read commands the lead runs without asking, by prefix, e.g.
+                           "bd show,gh issue view" (env AGENTCRAFT_LEAD_READ_COMMANDS)
   --no-lead-review         skip the lead's review turn before merge decisions
   --no-resume              do not resume interrupted sessions on start
 `;

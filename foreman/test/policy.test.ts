@@ -13,6 +13,7 @@ const gitBashHome = process.platform === 'win32' ? `/${homeFwd[0]!.toLowerCase()
 const worker: PolicyContext = { role: 'worker', cwd: wt, tempDirs: [] };
 const lead: PolicyContext = { role: 'lead', cwd: wt, tempDirs: [] };
 const withTemp: PolicyContext = { role: 'worker', cwd: wt };
+const leadReads: PolicyContext = { ...lead, leadReadCommands: ['bd show'] };
 
 type Row = [string, string, Record<string, unknown>, PolicyContext, 'allow' | 'ask' | 'deny'];
 const bash = (label: string, command: string, expected: 'allow' | 'ask' | 'deny', ctx: PolicyContext = worker): Row => [label, 'Bash', { command }, ctx, expected];
@@ -245,6 +246,12 @@ const rows: Row[] = [
   bash('lead writes a file', 'echo x > notes.txt', 'ask', lead),
   bash('lead git branch -f', 'git branch -f main HEAD', 'ask', lead),
   bash('lead git config write', 'git config core.hooksPath x', 'ask', lead),
+  // lead read commands
+  bash('lead declared read', 'bd show est-1 --json', 'allow', leadReads),
+  bash('lead undeclared subcommand', 'bd update est-1 --claim', 'ask', leadReads),
+  bash('lead prefix matches whole words', 'bd showall', 'ask', leadReads),
+  bash('lead declared read by path', './bd show est-1', 'ask', leadReads),
+  bash('worker declared read', 'bd show est-1', 'ask', { ...worker, leadReadCommands: ['bd show'] }),
   // other tools
   ['web fetch', 'WebFetch', { url: 'https://docs.npmjs.com', prompt: 'x' }, worker, 'ask'],
   ['web search', 'WebSearch', { query: 'node test runner' }, worker, 'ask'],

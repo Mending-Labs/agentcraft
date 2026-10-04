@@ -87,6 +87,7 @@ most ~100 ms of state, and interrupted agent turns resume on the next start.
 | `--max-concurrent` | `3` | workers running at once |
 | `--max-turns`, `--max-budget <usd>` | 40 lead / 80 worker, none | per turn caps |
 | `--ci "<cmd>"` | detected (`npm test`, `cargo test`, ...) | run after each task |
+| `--lead-read-commands "<cmd>,..."` | none | read commands the lead runs without asking, by prefix: `"bd show,gh issue view"` lets it read your issue tracker |
 | `--no-lead-review` | | merge decisions go to you without a lead review turn |
 | `--repo-poll-ms` | `10000` | how often checkouts are checked for head/dirty changes |
 | `--merge-style merge\|squash` / `AGENTCRAFT_MERGE_STYLE` | `merge` | approved merges: a merge commit that keeps the agents' commits, or one squashed commit (see Safety guarantees) |
@@ -179,7 +180,9 @@ Commands that git runs for us (`git rebase -x/--exec`, `git bisect run`, `git su
 `git filter-branch --*-filter`, `git difftool -x`, `-c alias.x='!cmd'`) are classified exactly like
 the same command typed directly. Anything it cannot verify asks. The lead works in your own
 checkout, so it may only run read-only commands without asking (a redirection like `git log > x`
-or `git diff --output=x` is a write).
+or `git diff --output=x` is a write). Programs the policy does not know, like an issue tracker's
+CLI, ask every time unless listed in `--lead-read-commands`. The list is matched by bare program
+name and applies to the lead only: a worker could put its own `bd` in front of the real one.
 
 "Always allow for this agent" stores every rule key the call needed, and each key is scoped so it
 never covers more than the prompt said (the prompt shows the scope: `"Always allow for this
