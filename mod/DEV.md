@@ -163,6 +163,7 @@ treated the same, other binary frames get an `ok:false` reply).
 | `dev.anchors` | `prefix?` | The published layout: `{layout, revision, bounds, anchors:{name:{x,y,z,yaw,pitch}}, count}` |
 | `dev.agents.look` | `agent?` | Agent life per agent: `{id, family, awaitingUser, awaitingDecision, needsYou, paused, posture, seated, sit, seat{x,z,top,drop,deskTop}?, bodyYaw, headYaw, headPitch, bubble, particles}`; top level `exclaims` (agents showing the "!"), `card{agent, input}` while an agent card is open (`input` = its message line, null when closed), `textInputActive` (SDL text input on: typed characters are delivered) |
 | `dev.agents.card` | `agent` | Opens the agent card for that agent (like right-clicking it) |
+| `dev.agents.freezeEntityTick` | `on?` (bool) | Skips every agent's entity tick, as Entity Culling's `tickCulling` does for entities out of view (see "Compatibility: entity tick culling"); agents must keep walking through `AgentManager`'s catch-up. Always returns `{on, entityAdvances, catchUpAdvances, moving}` summed over agents: with `on:false`, `catchUpAdvances` must not grow |
 | `dev.agents.fx` | `agent`, `fx` = `confetti`/`puff`/`sparkle`/`say`, `text?`, `to?` | Plays an agent effect now (QA preview; `say` shows a local speech bubble, nothing is sent) |
 | `dev.agents.keys` | `keys` (comma-separated: key names `space return escape back tab left right`, or text typed letter by letter, a-z 0-9 space) | **Test only** (`AGENTCRAFT_DEV_TEST=1`): presses keys as SDL reports a keyboard (SDL events queued for the game window, one key every 3 frames, through Minecraft's SDL event loop; printable keys produce text events only while SDL text input is on). Returns `{pressed, textEvents, screen, input?, textInputActive}`. `tools/agents-typing.mjs` uses it to check the agent card's message line |
 | `dev.test.foremanMessage` | `message:{type, ...}` | **Test only** (`AGENTCRAFT_DEV_TEST=1`): applies a Foreman message to the state model as if received (e.g. `foreman.status` with `auth:"failed"` to see the auth banner) |
@@ -321,6 +322,24 @@ teleports. Rendering: `EntityRenderDispatcherMixin` routes agents to `AgentRende
 `AvatarRenderer`, slim or wide by skin), because vanilla sends every `AvatarRenderState` to the
 player renderer at submit time. Clicks on agents are consumed client-side (never sent to the server,
 which does not know them).
+
+#### Compatibility: entity tick culling (Entity Culling)
+Mods that skip ticking entities the player can't see would freeze agents, because an agent only
+moves when it advances. The best known is Entity Culling (tr7zw), whose `tickCulling` is on by default:
+an agent walking out of view stopped mid-route. So `AgentManager` (END_CLIENT_TICK) offers every agent
+a catch-up advance after the level's entity ticks, with the same per-entity filters as
+`ClientLevel.tickEntities`: not while paused, removed, a passenger or tick-frozen. (It doesn't check
+ticking sections, so an agent in an unloaded section keeps walking.) A per-agent `TickGate` stamps the
+advance with `AgentManager.clock()`, so it runs exactly once per client tick, either from the entity
+tick or from the catch-up, never both. The catch-up calls `setOldPosAndRot()` first, as `commonTick()`
+does, so render interpolation stays right. The only effect that is not caught up is `tickCount` (the
+clock behind `AgentRenderer`'s `timeSeconds`), and only while a culler skips the whole tick, that is,
+while the agent is out of view. No user configuration is needed; Entity Culling is not a dependency and
+is not touched at runtime. (Before this, the workaround was adding `"agentcraft:agent"` to
+`tickCullingWhitelist` in `config/entityculling.json`.)
+To check without the mod, run `dev.agents.freezeEntityTick {on:true}`, make an agent walk (for example
+give it a task so it walks to a desk), and confirm that it still arrives, `entityAdvances` stays flat
+and `catchUpAdvances` grows by about 20 per agent per second.
 
 ### Nameplates: declutter and occlusion (fix round)
 The verifier found plates unreadable whenever agents shared a station (the lounge at every session
