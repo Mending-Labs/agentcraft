@@ -36,6 +36,7 @@ import { descendantsOf, killSnapshot, killTree, orphansOf, processTable, type Pr
 import { truncate } from '../../util/text.js';
 import { leadSystemPrompt, planPrompt, RESUME_PROMPT, reviewPrompt, workerSystemPrompt, workPrompt } from './prompts.js';
 import { detectApiAuth, NO_API_AUTH_MESSAGE, withAuthMode } from './auth.js';
+import { fetchPulls, githubOrigin, prRefs, pullBriefs, type PullRequest } from '../../pulls.js';
 import { StreamMapper, type TurnStats } from './stream.js';
 import { buildMcpServer, MCP_SERVER, type ToolHooks, type TurnHandle } from './tools.js';
 import { userName } from '../../user.js';
@@ -124,7 +125,16 @@ export interface ClaudeBackendOptions {
   queryFn?: typeof query;
   /** skip the startup auth probe (tests) */
   skipAuthCheck?: boolean;
+  /** injectable for tests: pull request intake (default: git + gh, see pulls.ts) */
+  pullFetcher?: PullFetcher;
 }
+
+export interface PullFetcher {
+  origin(repoPath: string): Promise<string | undefined>;
+  fetch(repoPath: string, numbers: number[]): Promise<{ pulls: PullRequest[]; errors: string[] }>;
+}
+
+const defaultPullFetcher: PullFetcher = { origin: (p) => githubOrigin(p), fetch: (p, n) => fetchPulls(p, n) };
 
 export class ClaudeBackend implements Backend {
   readonly name = 'claude' as const;
@@ -148,6 +158,7 @@ export class ClaudeBackend implements Backend {
   /** scheduler retry after an error (backoff) */
   private retryTimer: NodeJS.Timeout | undefined;
   private retryDelayMs = 2000;
+  private readonly pullFetcher: PullFetcher;
 
   constructor(
     private fm: Foreman,
@@ -155,6 +166,7 @@ export class ClaudeBackend implements Backend {
     private opts: ClaudeBackendOptions = {},
   ) {
     this.queryFn = opts.queryFn ?? query;
+    this.pullFetcher = opts.pullFetcher ?? defaultPullFetcher;
     this.hooks = {
       onReview: () => {
         /* handled after the worker's turn ends (CI then review) */
@@ -471,7 +483,27 @@ export class ClaudeBackend implements Backend {
     }
     for (const w of [LEAD, ...this.team]) if (!this.isStopped(w)) this.fm.setAgent(w, { active: true });
     this.fm.setAgent(LEAD, { state: 'thinking', station: 'meeting', activity: 'reading the goal', repoId: repo.id });
-    this.enqueue({ kind: 'plan', agentId: LEAD, goalId: goal.id, sessionKey: `${LEAD}:${goal.id}`, fresh: true, prompt: planPrompt(this.fm, goal, repo.path, repo.branch) });
+    const pulls = await this.intakePulls(goal, repo.path);
+    this.enqueue({ kind: 'plan', agentId: LEAD, goalId: goal.id, sessionKey: `${LEAD}:${goal.id}`, fresh: true, prompt: planPrompt(this.fm, goal, repo.path, repo.branch, pulls) });
+  }
+
+  /**
+   * A goal that mentions pull requests ("#12") on a GitHub repository: fetch them before the lead
+   * plans (see pulls.ts), announce them in the feed and keep a brief in shared memory.
+   */
+  private async intakePulls(goal: Goal, repoPath: string): Promise<PullRequest[]> {
+    const refs = prRefs(goal.text);
+    if (!refs.length || !(await this.pullFetcher.origin(repoPath))) return [];
+    this.fm.setAgent(LEAD, { state: 'reading', station: 'library', activity: `fetching ${refs.length} pull request${refs.length === 1 ? '' : 's'}` });
+    this.fm.bus.feed('system', `Fetching ${refs.length} pull request${refs.length === 1 ? '' : 's'} from GitHub`, { agentId: LEAD });
+    const { pulls, errors } = await this.pullFetcher.fetch(repoPath, refs);
+    for (const p of pulls) this.fm.bus.feed('task', `PR #${p.number} by @${p.author}: ${p.title}`, { agentId: LEAD });
+    for (const e of errors) this.fm.bus.feed('error', `PR ${e}`, { agentId: LEAD });
+    if (pulls.length) {
+      this.fm.memory.write({ scope: 'shared', title: `Pull requests for ${goal.id}`, body: pullBriefs(pulls), author: LEAD, mode: 'replace' });
+    }
+    this.fm.setAgent(LEAD, { state: 'thinking', station: 'meeting', activity: 'reading the goal' });
+    return pulls;
   }
 
   private promoteGoal(goal: Goal, why: string): void {
@@ -553,6 +585,8 @@ export class ClaudeBackend implements Backend {
         this.fm.bus.feed('task', `${this.fm.nameOf(agentId)} continues ${t.id} from ${this.fm.nameOf(prev.agentId)}'s branch`, { agentId });
       }
     }
+    // a pull request task starts from the contributor's commits (fetched at goal intake)
+    if (!startPoint && t.startBranch) startPoint = t.startBranch;
     const wt = await this.fm.repos.createWorktree(t.repoId!, agentId, t, startPoint ? { startPoint } : {});
     this.fm.tasks.update(t.id, { branch: wt.branch, worktree: wt.id });
     this.fm.tasks.setStatus(t.id, 'doing');
@@ -618,6 +652,7 @@ export class ClaudeBackend implements Backend {
         readDirs: [this.fm.memory.dir],
         alwaysAllow: this.fm.store.data.permissionRules[agentId] ?? [],
         mcpServer: MCP_SERVER,
+        leadReadCommands: this.cfg.leadReadCommands,
       });
       if (verdict.action === 'allow') return { behavior: 'allow', updatedInput: input };
       if (verdict.action === 'deny') {
@@ -699,7 +734,8 @@ export class ClaudeBackend implements Backend {
         settingSources: [],
         permissionMode: 'default',
         canUseTool: this.canUseTool(agentId, role, cwd, turn),
-        tools: role === 'lead' ? ['Read', 'Grep', 'Glob'] : ['Read', 'Grep', 'Glob', 'Edit', 'Write', 'Bash', 'TodoWrite'],
+        // the lead's Bash is read-only: the policy asks before anything that writes
+        tools: role === 'lead' ? ['Read', 'Grep', 'Glob', 'Bash'] : ['Read', 'Grep', 'Glob', 'Edit', 'Write', 'Bash', 'TodoWrite'],
         // no allowedTools: every tool call (incl. our MCP tools) goes through canUseTool/policy
         disallowedTools: ['Bash(git push:*)', 'Task', 'Agent', 'WebSearch', 'WebFetch'],
         mcpServers: { [MCP_SERVER]: buildMcpServer(this.fm, agentId, role, this.hooks, turn) },
