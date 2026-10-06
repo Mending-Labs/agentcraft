@@ -62,6 +62,8 @@ export interface PolicyContext {
   home?: string;
   /** scratch directories agents may read and write (default: the OS temp dir) */
   tempDirs?: string[];
+  /** lead only: command prefixes the user declared read-only, e.g. `bd show` */
+  leadReadCommands?: string[];
 }
 
 const READ_TOOLS = new Set(['Read', 'Grep', 'Glob', 'LS', 'NotebookRead']);
@@ -1494,6 +1496,9 @@ function classifyWords(cmd: string, cmdWord: string, rest: string[], sc: SegCtx,
     return merge(inner, exact(env, `xargs ${cmd}: its arguments come from input and cannot be checked`), ok('', false, { pathsOut: false }));
   }
 
+  // lead only: workers can write files, so their `bd` could be a fake on PATH
+  if (ctx.role === 'lead' && leadReadCommand(cmd, cmdWord, rest, ctx)) return ok(`${cmd}: declared read-only`, true);
+
   // ---- directory changes ----
   if (['cd', 'pushd', 'chdir', 'set-location', 'sl'].includes(cmd)) {
     // cmd.exe style `cd /d <path>` (seen from real agents): the switch is not the target. In Git
@@ -1791,6 +1796,15 @@ function classifyWords(cmd: string, cmdWord: string, rest: string[], sc: SegCtx,
     return merge(paths, ok(`${cmd} (project tool)`, false));
   }
   return exact(env, `unrecognised command: ${cmd}`);
+}
+
+/** "bd show" matches `bd show x`, not `./bd show x` or `bd showall`. */
+function leadReadCommand(cmd: string, cmdWord: string, rest: string[], ctx: PolicyContext): boolean {
+  if (/[\\/]/.test(cmdWord)) return false;
+  return (ctx.leadReadCommands ?? []).some((entry) => {
+    const [head, ...words] = entry.trim().split(/\s+/);
+    return baseCmd(head!) === cmd && words.every((w, i) => rest[i] === w);
+  });
 }
 
 /** `node_modules/.bin/<tool>` exists between the cwd and the worktree root (npx would not download it). */

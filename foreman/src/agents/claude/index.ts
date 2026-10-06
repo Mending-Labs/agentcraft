@@ -652,6 +652,7 @@ export class ClaudeBackend implements Backend {
         readDirs: [this.fm.memory.dir],
         alwaysAllow: this.fm.store.data.permissionRules[agentId] ?? [],
         mcpServer: MCP_SERVER,
+        leadReadCommands: this.cfg.leadReadCommands,
       });
       if (verdict.action === 'allow') return { behavior: 'allow', updatedInput: input };
       if (verdict.action === 'deny') {
@@ -733,7 +734,8 @@ export class ClaudeBackend implements Backend {
         settingSources: [],
         permissionMode: 'default',
         canUseTool: this.canUseTool(agentId, role, cwd, turn),
-        tools: role === 'lead' ? ['Read', 'Grep', 'Glob'] : ['Read', 'Grep', 'Glob', 'Edit', 'Write', 'Bash', 'TodoWrite'],
+        // the lead's Bash is read-only: the policy asks before anything that writes
+        tools: role === 'lead' ? ['Read', 'Grep', 'Glob', 'Bash'] : ['Read', 'Grep', 'Glob', 'Edit', 'Write', 'Bash', 'TodoWrite'],
         // no allowedTools: every tool call (incl. our MCP tools) goes through canUseTool/policy
         disallowedTools: ['Bash(git push:*)', 'Task', 'Agent', 'WebSearch', 'WebFetch'],
         mcpServers: { [MCP_SERVER]: buildMcpServer(this.fm, agentId, role, this.hooks, turn) },

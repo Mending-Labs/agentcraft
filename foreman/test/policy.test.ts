@@ -13,6 +13,7 @@ const gitBashHome = process.platform === 'win32' ? `/${homeFwd[0]!.toLowerCase()
 const worker: PolicyContext = { role: 'worker', cwd: wt, tempDirs: [] };
 const lead: PolicyContext = { role: 'lead', cwd: wt, tempDirs: [] };
 const withTemp: PolicyContext = { role: 'worker', cwd: wt };
+const leadReads: PolicyContext = { ...lead, leadReadCommands: ['bd show'] };
 
 type Row = [string, string, Record<string, unknown>, PolicyContext, 'allow' | 'ask' | 'deny'];
 const bash = (label: string, command: string, expected: 'allow' | 'ask' | 'deny', ctx: PolicyContext = worker): Row => [label, 'Bash', { command }, ctx, expected];
@@ -245,6 +246,23 @@ const rows: Row[] = [
   bash('lead writes a file', 'echo x > notes.txt', 'ask', lead),
   bash('lead git branch -f', 'git branch -f main HEAD', 'ask', lead),
   bash('lead git config write', 'git config core.hooksPath x', 'ask', lead),
+  // lead read commands
+  bash('lead declared read', 'bd show est-1 --json', 'allow', leadReads),
+  bash('lead undeclared subcommand', 'bd update est-1 --claim', 'ask', leadReads),
+  bash('lead prefix matches whole words', 'bd showall', 'ask', leadReads),
+  bash('lead declared read by path', './bd show est-1', 'ask', leadReads),
+  bash('worker declared read', 'bd show est-1', 'ask', { ...worker, leadReadCommands: ['bd show'] }),
+  bash('lead declared read then rm', 'bd show x; rm -rf y', 'ask', leadReads),
+  bash('lead declared read redirect', 'bd show x > out.txt', 'ask', leadReads),
+  bash('lead declared read piped to tee', 'bd show x | tee out.txt', 'ask', leadReads),
+  bash('lead declared read with substitution', 'bd show $(rm -rf y)', 'ask', leadReads),
+  bash('lead declared read via xargs', 'echo x | xargs bd show', 'ask', leadReads),
+  bash('lead rm', 'rm -rf src', 'ask', lead),
+  bash('lead git commit', 'git commit -am x', 'ask', lead),
+  bash('lead git checkout', 'git checkout other', 'ask', lead),
+  bash('lead npm install', 'npm install left-pad', 'ask', lead),
+  bash('lead curl', 'curl https://example.com', 'ask', lead),
+  bash('lead git log read', 'git log --oneline -5', 'allow', lead),
   // other tools
   ['web fetch', 'WebFetch', { url: 'https://docs.npmjs.com', prompt: 'x' }, worker, 'ask'],
   ['web search', 'WebSearch', { query: 'node test runner' }, worker, 'ask'],
