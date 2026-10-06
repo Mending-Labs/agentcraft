@@ -182,7 +182,7 @@ the same command typed directly. Anything it cannot verify asks. The lead works 
 checkout, so it may only run read-only commands without asking (a redirection like `git log > x`
 or `git diff --output=x` is a write). Programs the policy does not know, like an issue tracker's
 CLI, ask every time unless listed in `--lead-read-commands`. The list is matched by bare program
-name and applies to the lead only: a worker could put its own `bd` in front of the real one.
+name and applies to the lead only: a worker could put its own `bd` in front of the real one. Entries must be a bare program name plus plain words; writers, interpreters and network tools (`rm`, `git`, `bash`, `node`, `curl`, ...) are refused at startup.
 
 "Always allow for this agent" stores every rule key the call needed, and each key is scoped so it
 never covers more than the prompt said (the prompt shows the scope: `"Always allow for this

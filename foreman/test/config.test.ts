@@ -35,6 +35,13 @@ describe('loadConfig argument checking', () => {
     expect(read([])).toEqual(['bd show']);
   });
 
+  it('rejects lead read commands that could write or run code', () => {
+    home = tempDir();
+    for (const bad of ['rm', 'git status', './bd show', 'bd show; rm x', 'bd show > f', 'bash', 'bd $(x)']) {
+      expect(() => loadConfig(['--home', home!, '--lead-read-commands', bad], {})).toThrow(/lead read command/);
+    }
+  });
+
   it('accepts the sim flags launch.ps1 passes', () => {
     const cfg = load(['--backend', 'sim', '--profile', 'x', '--port', '41000', '--reset', '--showcase', 'late', '--speed', '2', '--autostart']);
     expect(cfg.sim.showcaseAt).toBe('showcase-late');

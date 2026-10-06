@@ -141,6 +141,28 @@ function list(v: unknown): string[] {
   return items.map((s) => s.trim()).filter(Boolean);
 }
 
+/** Programs that can write, run other code or reach the network: never declarable as lead "read" commands. */
+const NOT_READ_ONLY = new Set([
+  'git', 'rm', 'mv', 'cp', 'tee', 'dd', 'sed', 'awk', 'find', 'xargs', 'env', 'sudo', 'sh', 'bash', 'zsh',
+  'node', 'npm', 'npx', 'python', 'python3', 'pip', 'perl', 'ruby', 'curl', 'wget', 'ssh', 'scp', 'eval', 'exec',
+  'cmd', 'powershell', 'pwsh', 'touch', 'mkdir', 'chmod', 'kill',
+]);
+
+/** Each entry is a bare program name plus plain words ("bd show"): no paths, shell syntax, or writers/interpreters. */
+function readCommands(v: unknown): string[] {
+  const entries = list(v);
+  for (const e of entries) {
+    const [head = '', ...words] = e.split(/\s+/);
+    if (!/^[A-Za-z0-9_.+-]+$/.test(head) || !words.every((w) => /^[A-Za-z0-9_.:@+=-]+$/.test(w))) {
+      throw new Error(`bad lead read command "${e}" (use a bare program name and plain words, like "bd show")`);
+    }
+    if (NOT_READ_ONLY.has(head.toLowerCase().replace(/\.(exe|cmd|bat)$/, ''))) {
+      throw new Error(`lead read command "${e}" is not allowed: "${head}" can write files, run code or use the network`);
+    }
+  }
+  return entries;
+}
+
 function mergeStyle(v: unknown): 'merge' | 'squash' {
   if (v === undefined || v === 'merge') return 'merge';
   if (v === 'squash') return 'squash';
@@ -242,7 +264,7 @@ export function loadConfig(argv: string[], env: NodeJS.ProcessEnv = process.env)
       resumeOnStart: bool(flags.resume ?? fileClaude.resumeOnStart, true),
       leadReview: bool(flags['lead-review'] ?? fileClaude.leadReview, true),
       useClaudeLogin: bool(flags['use-claude-login'] ?? env.AGENTCRAFT_USE_CLAUDE_LOGIN ?? fileClaude.useClaudeLogin, false),
-      leadReadCommands: list(flags['lead-read-commands'] ?? env.AGENTCRAFT_LEAD_READ_COMMANDS ?? fileClaude.leadReadCommands),
+      leadReadCommands: readCommands(flags['lead-read-commands'] ?? env.AGENTCRAFT_LEAD_READ_COMMANDS ?? fileClaude.leadReadCommands),
     },
     sim: {
       speed: Math.max(0.05, num(flags.speed ?? env.AGENTCRAFT_SIM_SPEED ?? fileSim.speed, 1)),
