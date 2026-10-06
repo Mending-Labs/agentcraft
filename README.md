@@ -10,7 +10,7 @@
 [![Minecraft 26.3](https://img.shields.io/badge/Minecraft-26.3-8fa98b)](https://www.minecraft.net)
 [![Fabric](https://img.shields.io/badge/mod%20loader-Fabric-d97757)](https://fabricmc.net)
 [![Claude Agent SDK](https://img.shields.io/badge/agents-Claude%20Agent%20SDK-2fa3a0)](https://code.claude.com/docs/en/agent-sdk/overview)
-[![Tests](https://img.shields.io/badge/tests-482%20passing-3b2a20)](foreman/test)
+[![Tests](https://img.shields.io/badge/tests-487%20passing-3b2a20)](foreman/test)
 
 <img src="docs/img/readme/hero.jpg" alt="The AgentCraft HQ at golden hour" width="100%">
 
@@ -165,7 +165,7 @@ AgentCraft is built to point at code you care about.
 
 ## Quick start
 
-**You need:** Windows 10 or 11, or macOS, Java 25, Node 22+, git, and a copy of
+**You need:** Windows 10 or 11, macOS, or Linux, Java 25, Node 22+, git, and a copy of
 Minecraft: Java Edition.
 
 **For the real agents** you need Claude API access, either of these:
@@ -187,20 +187,22 @@ tools\launch.ps1 -Repo C:\path\to\your\repo      # real agents on your repo
 tools\stop.ps1                                   # stop everything launch.ps1 started
 ```
 
-On macOS, install Java 25 with `brew install openjdk@25`, then run from the checkout
-(the script selects that JDK without changing your system Java):
+On macOS, install Java 25 with `brew install openjdk@25`. On Linux, install your distribution's
+Java 25 JDK (on Arch: `pacman -S jdk25-openjdk`) or point `JAVA_HOME` at one. Then run from the
+checkout (the script selects that JDK without changing your system Java):
 
 ```sh
-node tools/mac.mjs launch --backend sim                 # try the studio without API usage
-node tools/mac.mjs stop --profile sim
-node tools/mac.mjs launch --repo /path/to/your/repo --use-claude-login
-node tools/mac.mjs stop
+node tools/unix.mjs launch --backend sim                 # try the studio without API usage
+node tools/unix.mjs stop --profile sim
+node tools/unix.mjs launch --repo /path/to/your/repo --use-claude-login
+node tools/unix.mjs stop
 ```
 
-The macOS launcher installs npm dependencies on first run, downloads Minecraft and Fabric
+This launcher installs npm dependencies on first run, downloads Minecraft and Fabric
 through Gradle, starts the Foreman and game in the background, and waits for the studio world.
-Use `--dev` for a muted client that does not take focus; `--no-game` starts only the Foreman.
-See [tools/README.md](tools/README.md) for options and logs.
+Use `--dev` for a muted client that does not take focus; `--no-game` starts only the Foreman,
+which is also how you pair it with your own launcher instance (Prism and the like).
+See [tools/README.md](tools/README.md) for options, logs and the own-launcher setup.
 
 The first launch installs npm dependencies and lets Gradle download Minecraft and Fabric, which
 takes a few minutes. After that, a launch reaches the studio in under a minute. The HQ builds itself
