@@ -107,15 +107,8 @@ export async function main(argv: string[]): Promise<void> {
   process.on('unhandledRejection', (e) => log.error(`unhandled rejection: ${(e as Error)?.stack ?? e}`));
 
   await foreman.start(backend);
-  if (cfg.autostart || !!cfg.goal) {
-    if (backend instanceof SimBackend) {
-      await backend.autostart(cfg.goal ?? DEFAULT_SIM_GOAL);
-    } else if (cfg.goal) {
-      // The sim backend has a canned default goal; the others do not, so --goal has to take the
-      // normal submit path. Without this branch --goal is silently ignored for every backend
-      // except sim, which reads as "the agent never started" rather than as a bad flag.
-      await foreman.submitGoal(cfg.goal);
-    }
+  if (backend instanceof SimBackend && (cfg.autostart || cfg.goal)) {
+    await backend.autostart(cfg.goal ?? DEFAULT_SIM_GOAL);
   } else if (cfg.goal) {
     await foreman.submitGoal(cfg.goal).catch((e) => log.error(`goal: ${(e as Error).message}`));
   }
