@@ -8,6 +8,7 @@ import dev.agentcraft.client.foreman.Foreman;
 import dev.agentcraft.client.foreman.ForemanListener;
 import dev.agentcraft.client.foreman.ForemanState;
 import dev.agentcraft.client.foreman.Protocol;
+import dev.agentcraft.client.ui.Guard;
 import net.minecraft.client.Minecraft;
 import org.jspecify.annotations.Nullable;
 import dev.agentcraft.entity.ModEntities;
@@ -78,9 +79,9 @@ public final class AgentsFeature {
 			AgentRenderer.provide(ctx);
 			return new NoopRenderer<>(ctx);
 		});
-		ClientTickEvents.END_CLIENT_TICK.register(mc -> AgentManager.get().tick(mc));
+		ClientTickEvents.END_CLIENT_TICK.register(mc -> Guard.run("agents.tick", () -> AgentManager.get().tick(mc)));
 		// nameplate declutter: every agent's render state is extracted, nothing is submitted yet
-		LevelExtractionEvents.END_EXTRACTION.register(ctx -> PlateLayout.layout(ctx.levelState()));
+		LevelExtractionEvents.END_EXTRACTION.register(ctx -> Guard.run("agents.plates", () -> PlateLayout.layout(ctx.levelState())));
 		Foreman.addListener(new ForemanListener() {
 			@Override
 			public void onSnapshot(ForemanState state) {
