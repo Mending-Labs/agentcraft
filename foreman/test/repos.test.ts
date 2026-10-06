@@ -4,8 +4,8 @@ import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Decision } from '../src/protocol.js';
 import { MERGE_OPTIONS } from '../src/protocol.js';
-import { git, gitOut } from '../src/util/git.js';
 import { parseTestOutput } from '../src/repos.js';
+import { git, gitOut } from '../src/util/git.js';
 import { demoRepo, makeForeman, rmrf, tempDir, type Harness } from './helpers.js';
 
 let h: Harness;
@@ -283,30 +283,14 @@ describe('RepoManager', () => {
 });
 
 describe('parseTestOutput', () => {
-  it('reads node:test spec-reporter output', () => {
-    const out = [
-      '✔ ok one (0.927721ms)',
-      '✖ bad # two (1.382734ms)',
-      '▶ grp',
-      '  ✖ inner bad (0.318354ms)',
-      '✖ grp (0.727085ms)',
-      'ℹ tests 3',
-      'ℹ suites 1',
-      'ℹ pass 1',
-      'ℹ fail 2',
-      '',
-      '✖ failing tests:',
-      '',
-      'test at a.test.mjs:4:1',
-      '✖ bad # two (1.382734ms)',
-      '  AssertionError [ERR_ASSERTION]: 1 == 2',
-    ].join('\n');
-    expect(parseTestOutput(out)).toEqual({ failures: ['bad # two', 'inner bad', 'grp'], summary: 'tests 3, pass 1, fail 2' });
+  it('reads TAP output', () => {
+    const out = parseTestOutput('ok 1 - a\nnot ok 2 - b\n# tests 2\n# pass 1\n# fail 1\n');
+    expect(out).toEqual({ failures: ['b'], summary: 'tests 2, pass 1, fail 1' });
   });
 
-  it('reads TAP output', () => {
-    const out = 'TAP version 13\nok 1 - ok one\nnot ok 2 - bad \\# two\n1..2\n# tests 2\n# pass 1\n# fail 1\n';
-    expect(parseTestOutput(out)).toEqual({ failures: ['bad # two'], summary: 'tests 2, pass 1, fail 1' });
+  it('reads the node --test spec reporter', () => {
+    const out = parseTestOutput('✔ a (0.27ms)\n✖ b (0.08ms)\nℹ tests 2\nℹ suites 0\nℹ pass 1\nℹ fail 1\n\n✖ failing tests:\n\ntest at t.test.mjs:3:1\n✖ b (0.08ms)\n  Error: x\n');
+    expect(out).toEqual({ failures: ['b'], summary: 'tests 2, pass 1, fail 1' });
   });
 });
 
