@@ -3,6 +3,7 @@ import type { Foreman } from '../../foreman.js';
 import type { Goal, Task, Worktree } from '../../protocol.js';
 import { truncate } from '../../util/text.js';
 import { userName } from '../../user.js';
+import { isPrBranch, pullBriefs, type PullRequest } from '../../pulls.js';
 
 export function leadSystemPrompt(fm: Foreman, workers: string[]): string {
   const team = workers.map((w) => `${fm.nameOf(w)} (id "${w}")`).join(', ');
@@ -54,7 +55,18 @@ function planText(fm: Foreman): string {
   return plan ? truncate(plan.body, 3000) : '(no plan in memory)';
 }
 
-export function planPrompt(fm: Foreman, goal: Goal, repoPath: string, branch: string): string {
+export function planPrompt(fm: Foreman, goal: Goal, repoPath: string, branch: string, pulls: PullRequest[] = []): string {
+  const prs = pulls.length
+    ? `
+Pull requests the Foreman fetched for this goal (contributors' work; each head is on a local branch):
+${pullBriefs(pulls)}
+
+For pull requests:
+- You cannot see the PRs' code (you are read-only on ${branch}; the workers review the actual changes). Judge each PR from its description and size above, and Grep the base for the areas it touches.
+- Create ONE task per PR you can review and merge: title "PR #<n>: <title> (@<author>)", start_branch "<its branch>", description = what to verify (correctness, tests, fits the codebase) and that the contributor's commits must be kept. Spread them across the workers.
+- If several PRs implement the same thing in competing ways, or a PR is a product-direction call rather than a fix, do not create tasks for them: ask_user once which way to go (recommended option first), and plan only what ${userName()} picks.
+`
+    : '';
   return `New goal from ${userName()}:
 "${goal.text}"
 
@@ -63,7 +75,7 @@ Repository: ${repoPath} (base branch ${branch}). Explore it read-only (Glob/Grep
 2. create_task for each task (deps + assignee)
 3. send_message to "all" with a two-line briefing
 4. end your turn.
-Current task board:
+${prs}Current task board:
 ${boardSummary(fm, goal.id)}`;
 }
 
@@ -78,7 +90,9 @@ export function taskHistory(fm: Foreman, task: Task): string {
 export function workPrompt(fm: Foreman, task: Task, goal: Goal | undefined, wt: Worktree, inbox: string, continuesFrom?: string): string {
   const handoff = continuesFrom
     ? `\nYou take over this task from ${fm.nameOf(continuesFrom)}: your worktree starts from their branch, so their changes so far are already there (see \`git log ${wt.base}..HEAD\` and \`git diff ${wt.base}\`). Continue from there; do not start over.\n`
-    : '';
+    : task.startBranch && isPrBranch(task.startBranch)
+      ? `\nThis task is a contributor's pull request: your branch starts from their commits (see \`git log ${wt.base}..HEAD\` and \`git diff ${wt.base}...HEAD\`). Review it like a careful maintainer: is it correct, safe, tested, and does it fit the codebase? Run the relevant tests and builds. Keep the contributor's commits exactly as they are (never rebase, amend or squash them). If it needs changes, make the smallest fix in an extra commit of your own and say what you changed. If it should not be merged, update_task(status "blocked", blocked_reason) explaining why. If it is good as is, say so and send it to review without changes.\n`
+      : '';
   return `Your task: ${task.id} "${task.title}"
 ${task.description ? `\n${task.description}\n` : ''}${handoff}${taskHistory(fm, task)}
 Goal: ${goal?.text ?? '(none)'}
