@@ -78,17 +78,21 @@ Delete `mod/run/saves/AgentCraft HQ` to start over with a fresh world.
 | Var | Default | Effect |
 |---|---|---|
 | `AGENTCRAFT_DEV_PORT` | 7879 | DevBridge port (always bound to 127.0.0.1) |
-| `AGENTCRAFT_DEV` | 1 | `0` disables the DevBridge |
-| `AGENTCRAFT_MUTE` | 1 | Forces master and music volume to 0 at startup. **Set `0` for real use** (for example in launch.ps1) to keep your own volume |
-| `AGENTCRAFT_FOCUS` | 0 | `0`: the window is shown **without activating it**, so it never steals focus. `1`: normal "come to front" |
-| `AGENTCRAFT_AUTOWORLD` | 1 | `0`: stay on the title screen |
+| `AGENTCRAFT_DEV` | dev run: 1, jar: 0 | `0` disables the DevBridge, `1` enables it |
+| `AGENTCRAFT_MUTE` | dev run: 1, jar: 0 | `1` forces master and music volume to 0 at startup. **Set `0` for real use** (for example in launch.ps1) to keep your own volume |
+| `AGENTCRAFT_FOCUS` | dev run: 0, jar: 1 | `0`: the window is shown **without activating it**, so it never steals focus. `1`: normal "come to front" |
+| `AGENTCRAFT_AUTOWORLD` | dev run: 1, jar: 0 | `1`: create/load the "AgentCraft HQ" world on startup; `0`: stay on the title screen |
 | `AGENTCRAFT_SHOTS_DIR` | `<repo>/artifacts/shots` | Where `dev.screenshot` writes |
 | `AGENTCRAFT_DEV_ALLOW_ORIGIN` | 0 | `1` lets browser pages (which send an Origin header) connect. They are refused by default |
 | `AGENTCRAFT_DEV_TEST` | 0 | `1` registers test-only commands (`dev.test.stall`, which blocks the render thread to simulate a hung game; `dev.test.foremanMessage`). Never set it for real use |
 | `AGENTCRAFT_PORT` | 7878 | Foreman WebSocket port the mod connects to (always 127.0.0.1) |
 | `AGENTCRAFT_FOREMAN` | 1 | `0` disables the Foreman link (the HUD says so) |
 
-The defaults (muted, no focus) suit unattended agent runs. `tools/launch.ps1` should set
+"Dev run" is `gradlew runClient` (`FabricLoader.isDevelopmentEnvironment()`); "jar" is a built jar
+installed in a normal launcher, which is someone's everyday game: there the mod opens no world, keeps
+the volume, takes focus normally and starts no DevBridge unless asked to, and the window pauses on lost
+focus as the player's options say (dev runs force `pauseOnLostFocus = false`).
+The dev-run defaults (muted, no focus) suit unattended agent runs. `tools/launch.ps1` should set
 `AGENTCRAFT_MUTE=0 AGENTCRAFT_FOCUS=1` for real use (when you launch the game yourself; it does
 without `-Dev`). The name the agents call you comes from the Foreman (`--user-name`, see
 foreman/README.md) and reaches the mod in `foreman.status`.
@@ -356,7 +360,10 @@ looking away (the verifier measured 1400-1500 before this change).
 `layout.Anchors` holds the published layout (an immutable snapshot, readable from any thread) and
 saves it as `agentcraft-anchors.json` in the world folder; it is loaded again whenever the HQ world
 starts. `/agentcraft hq [builder]` runs an `hq.HqBuilder`, publishes its anchors and moves the world
-spawn to `spawn`. The Phase 2 builder `test` (`hq.TestRoomBuilder`) is a temporary 25x25 walled
+spawn to `spawn`. Because it rewrites terrain and moves the spawn, it only builds in the "AgentCraft HQ"
+world (opt in elsewhere with `-Dagentcraft.hq.anyworld=1` / `AGENTCRAFT_HQ_ANYWORLD=1`) and never in a
+Hardcore world; a Hardcore world is never treated as the HQ world, and the DevBridge refuses every
+request but `dev.help` while one is loaded. The Phase 2 builder `test` (`hq.TestRoomBuilder`) is a temporary 25x25 walled
 room: a desk island with six monitors (north), library shelves and the task wall (west), terminals
 and merge stations (east), a meeting table and the goal atrium (centre), the podium with user spots,
 a per-agent status lamp test bench and the lounge (south, everyone facing north so `cam_agents` sees
