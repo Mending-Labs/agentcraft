@@ -82,7 +82,7 @@ describe('user name', () => {
 
   it('is sent to the mod in foreman.status and used in prompts', async () => {
     const { makeForeman } = await import('./helpers.js');
-    const { leadSystemPrompt } = await import('../src/agents/claude/prompts.js');
+    const { leadSystemPrompt } = await import('../src/agents/prompts.js');
     home = tempDir();
     const h = makeForeman(home, ['--user-name', 'Sam']);
     try {

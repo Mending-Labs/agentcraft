@@ -1,9 +1,9 @@
 // System-prompt appendices and job prompts for the claude backend.
-import type { Foreman } from '../../foreman.js';
-import type { Goal, Task, Worktree } from '../../protocol.js';
-import { truncate } from '../../util/text.js';
-import { userName } from '../../user.js';
-import { isPrBranch, pullBriefs, type PullRequest } from '../../pulls.js';
+import type { Foreman } from '../foreman.js';
+import type { Goal, Task, Worktree } from '../protocol.js';
+import { truncate } from '../util/text.js';
+import { userName } from '../user.js';
+import { isPrBranch, pullBriefs, type PullRequest } from '../pulls.js';
 
 export function leadSystemPrompt(fm: Foreman, workers: string[]): string {
   const team = workers.map((w) => `${fm.nameOf(w)} (id "${w}")`).join(', ');
