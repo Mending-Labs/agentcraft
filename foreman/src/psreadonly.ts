@@ -30,6 +30,40 @@ const GIT_VALUE_OPTS = new Set(['-c', '-C', '--git-dir', '--work-tree', '--names
 const BUILTIN_VARS = new Set(['_', 'psitem', 'true', 'false', 'null', 'matches', 'lastexitcode']);
 const SEPARATORS = new Set([';', '|', '}', ')', '']);
 
+/** curl flags that change nothing (single letters may be combined: -sSL). */
+const CURL_FLAGS = new Set(['--silent', '--show-error', '--location', '--head', '--include', '--verbose', '--insecure', '--fail', '--fail-with-body', '--compressed', '--http1.1', '--http2', '--no-progress-meter', '--globoff']);
+const CURL_LETTERS = new Set('sSLIivkfg'.split(''));
+/** ... and the ones taking a value that changes nothing either (the value is skipped). */
+const CURL_VALUE_FLAGS = new Set(['-w', '--write-out', '-m', '--max-time', '--connect-timeout', '-H', '--header', '-A', '--user-agent', '-e', '--referer', '--retry', '-r', '--range']);
+const DISCARD = new Set(['nul', '-', '$null', '/dev/null']);
+const CURL_STOP = new Set([';', '|', '}', ')', '&&', '||']);
+
+/** Why the curl call starting at `tokens[from]` is not a plain read (GET/HEAD, nothing sent, output discarded or shown). */
+function curlProblem(tokens: string[], from: number): string | undefined {
+  for (let j = from; j < tokens.length && !CURL_STOP.has(tokens[j]!); j++) {
+    const a = tokens[j]!;
+    if (!a.startsWith('-')) continue; // the URL
+    const next = (tokens[j + 1] ?? '').toLowerCase();
+    if (a === '-o' || a === '--output') {
+      if (!DISCARD.has(next)) return 'curl writing a file (-o)';
+      j++;
+    } else if (a === '-D' || a === '--dump-header') {
+      if (next !== '-') return 'curl writing headers to a file (-D)';
+      j++;
+    } else if (a === '-X' || a === '--request') {
+      if (next !== 'get' && next !== 'head') return `curl ${a} ${tokens[j + 1] ?? ''} (only GET and HEAD are reads)`;
+      j++;
+    } else if (CURL_VALUE_FLAGS.has(a)) {
+      j++;
+    } else if (CURL_FLAGS.has(a) || (/^-[A-Za-z]+$/.test(a) && [...a.slice(1)].every((c) => CURL_LETTERS.has(c)))) {
+      continue;
+    } else {
+      return `curl ${a} (it may send data or write files)`;
+    }
+  }
+  return undefined;
+}
+
 /** Why `script` is not provably read-only (undefined: it is). */
 export function psReadOnlyProblem(script: string, roots: string[]): string | undefined {
   if (/@['"]/.test(script)) return 'a here-string';
@@ -76,7 +110,8 @@ export function psReadOnlyProblem(script: string, roots: string[]): string | und
     if (w.startsWith('~')) return 'a path in the home folder (~)';
     if (/^[A-Za-z]:(?![\\/])/.test(w)) return `the drive-relative path ${w}`;
     if (/^(env|hklm|hkcu|hkey_\w+|registry|cert|function|variable|alias|wsman)::?/i.test(w)) return `the provider path ${w}`;
-    for (const m of w.matchAll(/[A-Za-z]:[\\/][^,;|]*/g)) {
+    // a drive letter on its own (not the "s:/" of "https://")
+    for (const m of w.matchAll(/(?<![A-Za-z0-9])[A-Za-z]:[\\/][^,;|]*/g)) {
       const p = m[0].trim();
       if (!roots.some((r) => isInsideOrEqual(path.resolve(p), r))) return `the path ${p} (outside the repo and workspaces)`;
     }
@@ -145,6 +180,11 @@ export function psReadOnlyProblem(script: string, roots: string[]): string | und
         (sub === 'remote' && (next === '-v' || SEPARATORS.has(next))) ||
         (sub === 'branch' && ['--show-current', '-a', '-v', '-vv', '-r', '--list'].includes(next));
       if (!ok) return `git ${sub || '(no subcommand)'} may change things`;
+      continue;
+    }
+    if (lower === 'curl' || lower === 'curl.exe') {
+      const problem = curlProblem(tokens, i + 1);
+      if (problem) return problem;
       continue;
     }
     if (!READ_CMDS.has(lower)) return `the command ${t}`;
