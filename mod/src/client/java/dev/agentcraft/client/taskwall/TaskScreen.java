@@ -9,6 +9,7 @@ import dev.agentcraft.client.foreman.Protocol.AgentRole;
 import dev.agentcraft.client.foreman.Protocol.CiStatus;
 import dev.agentcraft.client.foreman.Protocol.LogEntry;
 import dev.agentcraft.client.foreman.Protocol.LogKind;
+import dev.agentcraft.client.monitor.DisplayText;
 import dev.agentcraft.client.monitor.LogRows;
 import dev.agentcraft.client.monitor.MonitorFeature;
 import dev.agentcraft.client.foreman.Protocol.Task;
@@ -16,6 +17,7 @@ import dev.agentcraft.client.foreman.Protocol.TaskStatus;
 import dev.agentcraft.client.ui.Kit;
 import dev.agentcraft.client.ui.Panels;
 import dev.agentcraft.client.ui.TextUtil;
+import dev.agentcraft.client.ui.Tr;
 import dev.agentcraft.client.ui.UiStyle;
 import java.util.ArrayList;
 import java.util.List;
@@ -63,7 +65,7 @@ public class TaskScreen extends Screen {
 	}
 
 	public TaskScreen(String taskId) {
-		super(Component.literal("Task"));
+		super(Component.translatable("agentcraft.taskwall.title"));
 		this.taskId = taskId;
 	}
 
@@ -174,7 +176,7 @@ public class TaskScreen extends Screen {
 		h += depRows > 0 ? 12 + depRows * 11 + 4 : 0;
 		h += 12; // CI + branch line
 		boolean blocked = t != null && t.status() == TaskStatus.BLOCKED;
-		List<FormattedCharSequence> reason = blocked && t.blockedReason() != null ? clip(TextUtil.wrap(font, "Blocked: " + t.blockedReason(), inner), 2)
+		List<FormattedCharSequence> reason = blocked && t.blockedReason() != null ? clip(TextUtil.wrap(font, Tr.t("taskwall.blocked_reason", t.blockedReason()), inner), 2)
 			: List.of();
 		h += reason.isEmpty() ? 0 : reason.size() * 10 + 4;
 		List<FormattedCharSequence> summary = t != null && t.summary() != null && !t.summary().isBlank() && t.status() == TaskStatus.DONE
@@ -196,8 +198,8 @@ public class TaskScreen extends Screen {
 		int x = px + pad.left();
 		int y = py + pad.top();
 		if (t == null) {
-			Panels.header(g, font, "Task " + taskId, x, y, inner);
-			Panels.text(g, font, Foreman.state() != null && Foreman.state().hasData() ? "This task is gone." : "Waiting for the Foreman.", x, y + 22, muted);
+			Panels.header(g, font, Tr.t("taskwall.task_id", taskId), x, y, inner);
+			Panels.text(g, font, Tr.t(Foreman.state() != null && Foreman.state().hasData() ? "taskwall.task_gone" : "taskwall.waiting_foreman"), x, y + 22, muted);
 			return;
 		}
 		// ---- header: id + status pill, browse arrows
@@ -249,7 +251,8 @@ public class TaskScreen extends Screen {
 					Panels.sprite(g, Kit.dot(fam, true), x + 23, y + 10, 11, 11, (pulse << 24) | 0xFFFFFF);
 				}
 				Panels.dot(g, fam, x + 25, y + 12, false);
-				String act = !a.isActive() ? "off shift" : a.isPaused() ? "paused" : a.activity().isBlank() ? a.state().wire().replace('_', ' ') : a.activity().replace("`", "");
+				String act = !a.isActive() ? Tr.t("taskwall.off_shift") : a.isPaused() ? Tr.t("taskwall.paused")
+					: a.activity().isBlank() ? DisplayText.agentState(a.state()) : a.activity().replace("`", "");
 				Panels.text(g, font, TextUtil.ellipsize(font, act, inner - 40), x + 35, y + 12, muted);
 				if (now != null) {
 					drawLatest(g, now, x + 25, y + 23, inner - 25, muted, error);
@@ -257,7 +260,7 @@ public class TaskScreen extends Screen {
 			}
 		} else {
 			Panels.dot(g, "idle", x, y + 1, false);
-			Panels.text(g, font, "Unassigned", x + 10, y, muted);
+			Panels.text(g, font, Tr.t("taskwall.unassigned"), x + 10, y, muted);
 		}
 		y += assigneeH + 4;
 		for (FormattedCharSequence l : desc) {
@@ -269,7 +272,7 @@ public class TaskScreen extends Screen {
 		}
 		// ---- dependencies
 		if (depRows > 0) {
-			Panels.text(g, font, "Needs", x, y, ink);
+			Panels.text(g, font, Tr.t("taskwall.needs"), x, y, ink);
 			y += 12;
 			for (int i = 0; i < depRows; i++) {
 				String d = t.deps().get(i);
@@ -284,22 +287,22 @@ public class TaskScreen extends Screen {
 				y += 11;
 			}
 			if (t.deps().size() > depRows) {
-				Panels.text(g, font, "+" + (t.deps().size() - depRows) + " more", x + inner - 50, y - 11, muted);
+				Panels.text(g, font, Tr.t("taskwall.n_more", t.deps().size() - depRows), x + inner - 50, y - 11, muted);
 			}
 			y += 4;
 		}
 		// ---- CI + branch
 		String ci = switch (t.ci()) {
-			case PASS -> "passing";
-			case FAIL -> "failing";
-			case RUNNING -> "running";
-			default -> "not run";
+			case PASS -> Tr.t("taskwall.ci_passing");
+			case FAIL -> Tr.t("taskwall.ci_failing");
+			case RUNNING -> Tr.t("taskwall.ci_running");
+			default -> Tr.t("taskwall.ci_not_run");
 		};
 		Panels.text(g, font, "CI", x, y, ink);
 		Panels.dot(g, t.ci() == CiStatus.PASS ? "done" : t.ci() == CiStatus.FAIL ? "error" : t.ci() == CiStatus.RUNNING ? "working" : "idle", x + 14, y + 1,
 			false);
 		Panels.text(g, font, ci, x + 24, y, t.ci() == CiStatus.FAIL ? error : muted);
-		String prio = t.priority() > 0 ? "priority " + t.priority() : t.priority() < 0 ? "low priority" : "";
+		String prio = t.priority() > 0 ? Tr.t("taskwall.priority", t.priority()) : t.priority() < 0 ? Tr.t("taskwall.low_priority") : "";
 		int bx = x + 24 + font.width(ci) + 12;
 		if (!prio.isEmpty()) {
 			Panels.text(g, font, prio, bx, y, t.priority() > 0 ? ink : muted);
@@ -333,13 +336,13 @@ public class TaskScreen extends Screen {
 		String primary = confirmCancel ? "cancel" : blocked || t.ci() == CiStatus.FAIL ? "retry" : t.status() == TaskStatus.TODO ? "prioritize" : "";
 		int gap = 4;
 		int bw = (inner - gap * 3) / 4;
-		button(g, "retry", "Retry", x, y, bw, 20, primary.equals("retry"), live && !cancelled && t.status() != TaskStatus.TODO, null, mouseX, mouseY,
+		button(g, "retry", Tr.t("taskwall.btn_retry"), x, y, bw, 20, primary.equals("retry"), live && !cancelled && t.status() != TaskStatus.TODO, null, mouseX, mouseY,
 			false);
-		button(g, "prioritize", "Prioritize", x + (bw + gap), y, bw, 20, primary.equals("prioritize"), live && !cancelled && !done, null, mouseX,
+		button(g, "prioritize", Tr.t("taskwall.btn_prioritize"), x + (bw + gap), y, bw, 20, primary.equals("prioritize"), live && !cancelled && !done, null, mouseX,
 			mouseY, false);
-		button(g, "reassign", "Reassign", x + 2 * (bw + gap), y, bw, 20, false, live && !cancelled && !done, null,
+		button(g, "reassign", Tr.t("taskwall.btn_reassign"), x + 2 * (bw + gap), y, bw, 20, false, live && !cancelled && !done, null,
 			mouseX, mouseY, false);
-		button(g, "cancel", confirmCancel ? "Confirm" : "Cancel", x + 3 * (bw + gap), y, inner - 3 * (bw + gap), 20, primary.equals("cancel"),
+		button(g, "cancel", Tr.t(confirmCancel ? "taskwall.btn_confirm" : "taskwall.btn_cancel"), x + 3 * (bw + gap), y, inner - 3 * (bw + gap), 20, primary.equals("cancel"),
 			live && !cancelled && !done, null, mouseX, mouseY, false);
 		y += 20;
 		if (reassignOpen && s != null) {
@@ -367,8 +370,8 @@ public class TaskScreen extends Screen {
 		y += 10;
 		// ---- key hints
 		int kx = x;
-		kx = keycap(g, "Esc", "close", kx, y);
-		keycap(g, "<  >", "browse", kx + 10, y);
+		kx = keycap(g, Tr.t("taskwall.key_esc"), Tr.t("taskwall.hint_close"), kx, y);
+		keycap(g, "<  >", Tr.t("taskwall.hint_browse"), kx + 10, y);
 	}
 
 	/** The assignee's newest log entry (the monitors' log counter says when to fetch it again). */
@@ -410,12 +413,12 @@ public class TaskScreen extends Screen {
 			return null;
 		}
 		if (confirmCancel) {
-			return "Cancel " + t.id() + "? Press Confirm (it stops the work on it)";
+			return Tr.t("taskwall.confirm_cancel", t.id());
 		}
 		if (feedback != null) {
 			return feedback;
 		}
-		return live ? null : "Foreman offline: actions are disabled";
+		return live ? null : Tr.t("taskwall.offline_actions");
 	}
 
 	private int keycap(GuiGraphicsExtractor g, String key, String verb, int x, int y) {
@@ -525,21 +528,22 @@ public class TaskScreen extends Screen {
 
 	private void send(String action, @Nullable String arg) {
 		String id = taskId;
-		feedback = "Sending " + action + "...";
+		// action is a protocol value (retry, prioritize, cancel, reassign): one display line per action
+		feedback = Tr.t("taskwall.sending_" + action);
 		feedbackError = false;
 		Foreman.taskAction(id, action, arg).whenComplete((ack, err) -> {
 			if (err != null) {
-				feedback = "Not sent: " + (err.getMessage() == null ? err.toString() : err.getMessage());
+				feedback = Tr.t("taskwall.not_sent", err.getMessage() == null ? err.toString() : err.getMessage());
 				feedbackError = true;
 			} else if (!ack.ok()) {
-				feedback = "Foreman: " + ack.error();
+				feedback = Tr.t("taskwall.foreman_error", ack.error());
 				feedbackError = true;
 			} else {
 				feedback = switch (action) {
-					case "retry" -> "Queued again";
-					case "prioritize" -> "Moved to the top of the queue";
-					case "cancel" -> "Cancelled";
-					default -> "Reassigned to " + (arg == null ? "?" : nameOf(arg));
+					case "retry" -> Tr.t("taskwall.done_retry");
+					case "prioritize" -> Tr.t("taskwall.done_prioritize");
+					case "cancel" -> Tr.t("taskwall.done_cancel");
+					default -> Tr.t("taskwall.done_reassign", arg == null ? "?" : nameOf(arg));
 				};
 				feedbackError = false;
 			}
@@ -554,12 +558,12 @@ public class TaskScreen extends Screen {
 
 	static String statusLabel(Task t) {
 		return switch (t.status()) {
-			case TODO -> "To do";
-			case DOING -> "Doing";
-			case REVIEW -> "In review";
-			case DONE -> "Done";
-			case BLOCKED -> "Blocked";
-			case CANCELLED -> "Cancelled";
+			case TODO -> Tr.t("taskwall.status_todo");
+			case DOING -> Tr.t("taskwall.status_doing");
+			case REVIEW -> Tr.t("taskwall.status_review");
+			case DONE -> Tr.t("taskwall.status_done");
+			case BLOCKED -> Tr.t("taskwall.status_blocked");
+			case CANCELLED -> Tr.t("taskwall.status_cancelled");
 			default -> t.status().wire();
 		};
 	}

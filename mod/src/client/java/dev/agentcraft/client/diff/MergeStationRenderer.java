@@ -15,6 +15,7 @@ import dev.agentcraft.client.foreman.Protocol.Task;
 import dev.agentcraft.client.foreman.Protocol.Worktree;
 import dev.agentcraft.client.ui.Kit;
 import dev.agentcraft.client.ui.TextUtil;
+import dev.agentcraft.client.ui.Tr;
 import dev.agentcraft.client.ui.UiStyle;
 import dev.agentcraft.client.ui.WorldUi;
 import dev.agentcraft.client.world.StationRenderState;
@@ -164,7 +165,7 @@ public class MergeStationRenderer extends StationRenderer<MergeStationBlockEntit
 		if (w != null) {
 			s.adds = "+" + w.additions();
 			s.dels = "-" + w.deletions();
-			s.files = w.files() + (w.files() == 1 ? " file" : " files");
+			s.files = ReviewKit.filesCount(w.files());
 		} else {
 			s.adds = s.dels = "";
 			s.files = "";
@@ -173,9 +174,9 @@ public class MergeStationRenderer extends StationRenderer<MergeStationBlockEntit
 		s.ciFamily = ReviewKit.ciFamily(ci);
 		s.ciInk = ReviewKit.ciInk(ci);
 		s.ciLabel = switch (ci) {
-			case PASS -> "pass";
-			case FAIL -> "fail";
-			case RUNNING -> "testing";
+			case PASS -> Tr.t("diff.ci_short_pass");
+			case FAIL -> Tr.t("diff.ci_short_fail");
+			case RUNNING -> Tr.t("diff.ci_short_running");
 			default -> "";
 		};
 	}
@@ -187,7 +188,7 @@ public class MergeStationRenderer extends StationRenderer<MergeStationBlockEntit
 		}
 		Font font = Minecraft.getInstance().font;
 		int h = s.empty ? EMPTY_H : CARD_H;
-		int w = s.empty ? Math.min(CARD_W, 17 + Math.max(font.width("All merged"), font.width("nothing waits")) + 7) : CARD_W;
+		int w = s.empty ? Math.min(CARD_W, 17 + Math.max(font.width(Tr.t("diff.station_all_merged")), font.width(Tr.t("diff.station_nothing_waits"))) + 7) : CARD_W;
 		int light = LightCoordsUtil.pack(Math.max(LightCoordsUtil.block(s.light), 11), LightCoordsUtil.sky(s.light));
 		ps.pushPose();
 		// north-facing model frame: the viewer stands at -Z; the card stands on the top face, leaning back
@@ -219,8 +220,8 @@ public class MergeStationRenderer extends StationRenderer<MergeStationBlockEntit
 		if (s.empty) {
 			WorldUi.submitNineSlice(ps, c, WorldUi.Layer.SOLID, Kit.card("done"), 0, 0, w, h, 0xFFFFFFFF, light);
 			WorldUi.submitSprite(ps, c, Kit.dot("done", false), 7, 7, 7, 7, 0xFFFFFFFF, light);
-			WorldUi.submitText(ps, c, "All merged", 17, 4, ink, light);
-			WorldUi.submitText(ps, c, "nothing waits", 17, 12, muted, light);
+			WorldUi.submitText(ps, c, Tr.t("diff.station_all_merged"), 17, 4, ink, light);
+			WorldUi.submitText(ps, c, Tr.t("diff.station_nothing_waits"), 17, 12, muted, light);
 			// the brass foot
 			WorldUi.submitFill(ps, c, 2, h - 1, w - 2, h + 1, UiStyle.color("palette.ui.border"), light);
 			return;
@@ -233,7 +234,8 @@ public class MergeStationRenderer extends StationRenderer<MergeStationBlockEntit
 		int cw = Math.max(10, font.width(count) + 5);
 		int cx = w - 5 - cw;
 		int labelMax = cx - (x + 13) - (s.index == 0 ? 13 : 3);
-		String head = s.index == 0 ? (font.width("Merge review") <= labelMax ? "Merge review" : "Review") : "Next";
+		String mergeReview = Tr.t("diff.merge_review");
+		String head = s.index == 0 ? (font.width(mergeReview) <= labelMax ? mergeReview : Tr.t("diff.station_review")) : Tr.t("diff.station_next");
 		WorldUi.submitText(ps, c, head, x + 13, 5, ink, light);
 		if (s.index == 0) {
 			float phase = (float) ((System.currentTimeMillis() % 1200) / 1200.0 * Math.PI * 2);

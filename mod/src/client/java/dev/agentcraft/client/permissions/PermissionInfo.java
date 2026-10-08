@@ -2,6 +2,7 @@ package dev.agentcraft.client.permissions;
 
 import dev.agentcraft.client.foreman.Protocol;
 import dev.agentcraft.client.foreman.Protocol.Decision;
+import dev.agentcraft.client.ui.Tr;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -24,14 +25,17 @@ public record PermissionInfo(String tool, String command, @Nullable String reaso
 
 	/** Risk level, colour-coded with the status palette (low brass, medium clay, high red). */
 	public enum Risk {
-		LOW("thinking", "Low risk"), MEDIUM("waiting", "Medium risk"), HIGH("error", "High risk");
+		LOW("thinking"), MEDIUM("waiting"), HIGH("error");
 
 		public final String family;
-		public final String label;
 
-		Risk(String family, String label) {
+		Risk(String family) {
 			this.family = family;
-			this.label = label;
+		}
+
+		/** "Low risk": the chip label, in the current language (resolved when drawn). */
+		public String label() {
+			return Tr.t("permissions.risk_" + name().toLowerCase(Locale.ROOT));
 		}
 	}
 
@@ -109,7 +113,7 @@ public record PermissionInfo(String tool, String command, @Nullable String reaso
 			}
 		}
 		if (tool == null) {
-			tool = "Tool";
+			tool = Tr.t("permissions.tool");
 		}
 		return new PermissionInfo(tool, command, reason, cwd, covers, classify(tool, command, reason), List.copyOf(extra));
 	}

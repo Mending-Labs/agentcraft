@@ -2,6 +2,7 @@ package dev.agentcraft.client.agents;
 
 import dev.agentcraft.client.foreman.Protocol.Agent;
 import dev.agentcraft.client.foreman.Protocol.AgentState;
+import dev.agentcraft.client.ui.Tr;
 import dev.agentcraft.client.ui.UiStyle;
 import org.jspecify.annotations.Nullable;
 
@@ -103,13 +104,13 @@ public final class AgentView {
 	/** One line for the nameplate under the name. */
 	public String activityLine() {
 		if (stale) {
-			return "Foreman offline";
+			return Tr.t("agents.foreman_offline");
 		}
 		if (!active) {
-			return "off shift";
+			return Tr.t("agents.activity_off_shift");
 		}
 		if (paused) {
-			return activity.isEmpty() ? "paused" : "paused · " + activity;
+			return activity.isEmpty() ? Tr.t("agents.activity_paused") : Tr.t("agents.activity_paused") + " · " + activity;
 		}
 		return activity;
 	}

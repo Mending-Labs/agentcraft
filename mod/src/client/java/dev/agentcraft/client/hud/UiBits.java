@@ -7,6 +7,7 @@ import dev.agentcraft.client.foreman.Protocol.Agent;
 import dev.agentcraft.client.ui.Kit;
 import dev.agentcraft.client.ui.Panels;
 import dev.agentcraft.client.ui.TextUtil;
+import dev.agentcraft.client.ui.Tr;
 import dev.agentcraft.client.ui.UiStyle;
 import java.time.Instant;
 import java.time.LocalTime;
@@ -98,7 +99,7 @@ public final class UiBits {
 	}
 
 	public static boolean isUser(@Nullable String id) {
-		return id != null && (id.equals("user") || id.equals("you") || id.equalsIgnoreCase(userName()));
+		return id != null && (id.equals("user") || id.equals("you") || id.equalsIgnoreCase(rawUserName("You")));
 	}
 
 	/**
@@ -106,9 +107,14 @@ public final class UiBits {
 	 * --user-name / AGENTCRAFT_USER_NAME; default the OS account name). "You" before the first status.
 	 */
 	public static String userName() {
+		return rawUserName(Tr.t("hud.you"));
+	}
+
+	/** The Foreman's user name, or {@code fallback} (compared untranslated in {@link #isUser}). */
+	private static String rawUserName(String fallback) {
 		var st = Foreman.state().status();
 		String n = st == null ? null : st.userName();
-		return n == null || n.isBlank() ? "You" : n;
+		return n == null || n.isBlank() ? fallback : n;
 	}
 
 	/** Display name of an agent id (Foreman name, then cast name, then the id). */
@@ -117,10 +123,10 @@ public final class UiBits {
 			return "";
 		}
 		if (isUser(agentId)) {
-			return "You";
+			return Tr.t("hud.you");
 		}
 		if (agentId.equals("all")) {
-			return "everyone";
+			return Tr.t("hud.everyone");
 		}
 		Agent a = Foreman.state() == null ? null : Foreman.state().agent(agentId);
 		if (a != null) {
@@ -332,18 +338,18 @@ public final class UiBits {
 	public static String ago(long ts) {
 		long d = Math.max(0, System.currentTimeMillis() - ts) / 1000;
 		if (d < 10) {
-			return "just now";
+			return Tr.t("hud.ago_now");
 		}
 		if (d < 60) {
-			return d + "s ago";
+			return Tr.t("hud.ago_seconds", d);
 		}
 		if (d < 3600) {
-			return d / 60 + "m ago";
+			return Tr.t("hud.ago_minutes", d / 60);
 		}
 		if (d < 86400) {
-			return d / 3600 + "h ago";
+			return Tr.t("hud.ago_hours", d / 3600);
 		}
-		return d / 86400 + "d ago";
+		return Tr.t("hud.ago_days", d / 86400);
 	}
 
 	public static String clock(long ts) {

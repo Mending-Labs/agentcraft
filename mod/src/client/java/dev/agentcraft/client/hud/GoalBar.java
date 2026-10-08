@@ -11,6 +11,7 @@ import dev.agentcraft.client.foreman.Protocol.TaskStatus;
 import dev.agentcraft.client.ui.Kit;
 import dev.agentcraft.client.ui.Panels;
 import dev.agentcraft.client.ui.TextUtil;
+import dev.agentcraft.client.ui.Tr;
 import dev.agentcraft.client.ui.UiStyle;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElement;
 import net.minecraft.client.DeltaTracker;
@@ -83,7 +84,7 @@ public final class GoalBar implements HudElement {
 		if (fs == null || fs.auth() != dev.agentcraft.client.foreman.Protocol.AuthStatus.FAILED || !s.link().synced()) {
 			return 0;
 		}
-		String msg = fs.message() != null ? fs.message() : "run `claude` and /login, then restart the Foreman";
+		String msg = fs.message() != null ? fs.message() : Tr.t("hud.auth_help");
 		int maxW = Math.min(360, g.guiWidth() - 40);
 		int lines = TextUtil.wrap(font, msg, maxW - 34).size();
 		Kit.Padding p = Kit.padding("panel_paper");
@@ -149,11 +150,11 @@ public final class GoalBar implements HudElement {
 		for (var a : s.agents().values()) {
 			if (a.role() == dev.agentcraft.client.foreman.Protocol.AgentRole.LEAD) {
 				return a.state() == dev.agentcraft.client.foreman.Protocol.AgentState.WAITING_USER
-					? a.name() + " needs your answer before planning"
-					: a.name() + " is planning the tasks…";
+					? Tr.t("hud.lead_needs_answer", a.name())
+					: Tr.t("hud.lead_planning", a.name());
 			}
 		}
-		return "Marlow is planning the tasks…";
+		return Tr.t("hud.lead_planning", "Marlow");
 	}
 
 	private int drawGoal(GuiGraphicsExtractor g, Font font, ForemanState s, Goal goal, int y0, int alpha, boolean stale) {
@@ -178,22 +179,22 @@ public final class GoalBar implements HudElement {
 			case PLANNING -> {
 				family = "thinking";
 				fill = "brass";
-				prefix = "Planning · ";
+				prefix = Tr.t("hud.goal_planning") + " · ";
 			}
 			case DONE -> {
 				family = "done";
 				fill = "sage";
-				prefix = "Done " + UiBits.CHECK + "  ";
+				prefix = Tr.t("hud.goal_done") + " " + UiBits.CHECK + "  ";
 			}
 			case FAILED -> {
 				family = "error";
 				fill = "red";
-				prefix = "Failed · ";
+				prefix = Tr.t("hud.goal_failed") + " · ";
 			}
 			case CANCELLED -> {
 				family = "idle";
 				fill = "brass";
-				prefix = "Cancelled · ";
+				prefix = Tr.t("hud.goal_cancelled") + " · ";
 			}
 			default -> {
 				family = "working";
@@ -222,15 +223,16 @@ public final class GoalBar implements HudElement {
 
 		// task counts by column, each with its status dot
 		int cy = by + 6 + 4;
-		String[] labels = {"doing", "review", "todo", "blocked", "done"};
+		String[] labels = {Tr.t("hud.count_doing"), Tr.t("hud.count_review"), Tr.t("hud.count_todo"), Tr.t("hud.count_blocked"),
+			Tr.t("hud.count_done")};
 		String[] fams = {"working", "thinking", "idle", "error", "done"};
 		int cx = ix;
 		int act = UiStyle.withAlpha(UiBits.activityOnInk(), alpha);
 		if (totalTasks == 0) {
-			g.text(font, goal.status() == GoalStatus.PLANNING ? planningLine(s) : "no tasks yet", cx, cy, act, false);
+			g.text(font, goal.status() == GoalStatus.PLANNING ? planningLine(s) : Tr.t("hud.no_tasks"), cx, cy, act, false);
 		} else {
 			// done count on the right ("2/9 done"), the open columns on the left with labels when they fit
-			String done = counts[4] + "/" + totalTasks + " done";
+			String done = Tr.t("hud.done_of_total", counts[4], totalTasks);
 			int doneW = font.width(done);
 			Panels.sprite(g, Kit.dot("done", false), ix + iw - doneW - 9, cy + 1, 7, 7, tint);
 			g.text(font, done, ix + iw - doneW, cy, act, false);
@@ -238,7 +240,7 @@ public final class GoalBar implements HudElement {
 			boolean withLabels = countsWidth(font, labels, true) <= room;
 			int open = counts[0] + counts[1] + counts[2] + counts[3];
 			if (open == 0) {
-				String all = goal.status() == GoalStatus.DONE ? "finished " + UiBits.ago(goal.updatedAt()) : "nothing open right now";
+				String all = goal.status() == GoalStatus.DONE ? Tr.t("hud.finished_ago", UiBits.ago(goal.updatedAt())) : Tr.t("hud.nothing_open");
 				g.text(font, TextUtil.ellipsize(font, all, room), cx, cy, act, false);
 			}
 			for (int i = 0; i < 4; i++) {
@@ -270,9 +272,9 @@ public final class GoalBar implements HudElement {
 	}
 
 	private int drawNoGoal(GuiGraphicsExtractor g, Font font, int y0) {
-		String key = Keys.console == null ? "Backtick" : Keys.label(Keys.console);
-		String a = "No goal yet · press";
-		String b = "to give the team one";
+		String key = Keys.console == null ? Tr.t("hud.key_backtick") : Keys.label(Keys.console);
+		String a = Tr.t("hud.no_goal_press");
+		String b = Tr.t("hud.no_goal_give");
 		Kit.Padding p = Kit.padding("tooltip");
 		int kw = UiBits.keycapWidth(font, key);
 		int w = p.left() + 11 + font.width(a) + 4 + kw + 4 + font.width(b) + p.right() + 2;
@@ -296,7 +298,7 @@ public final class GoalBar implements HudElement {
 
 	private int drawBadge(GuiGraphicsExtractor g, Font font, int waiting, int y0, int alpha) {
 		String key = Keys.decisions == null ? "J" : Keys.label(Keys.decisions);
-		String text = waiting + " waiting · press";
+		String text = Tr.t("hud.waiting_press", waiting);
 		Kit.Padding p = Kit.padding("tooltip");
 		int kw = UiBits.keycapWidth(font, key);
 		int w = p.left() + 13 + font.width(text) + 4 + kw + p.right() + 1;

@@ -3,6 +3,7 @@ package dev.agentcraft.client.agents;
 import com.mojang.blaze3d.vertex.PoseStack;
 import dev.agentcraft.client.ui.Kit;
 import dev.agentcraft.client.ui.TextUtil;
+import dev.agentcraft.client.ui.Tr;
 import dev.agentcraft.client.ui.UiStyle;
 import dev.agentcraft.client.ui.WorldUi;
 import java.util.List;
@@ -114,7 +115,7 @@ public final class Nameplate {
 		Kit.Padding pad = Kit.padding("nameplate");
 		// the activity wraps to a second line before it is ever cut ("outlining the Tags docs");
 		// a question waiting for you is shown in full by the podium bubble, so the plate just says so
-		String shown = act.startsWith("asking you") ? "question for you" : act.replace("`", "");
+		String shown = act.startsWith("asking you") ? Tr.t("agents.question_for_you") : act.replace("`", "");
 		String activity = "";
 		String activity2 = "";
 		if (!compact && !shown.isEmpty()) {

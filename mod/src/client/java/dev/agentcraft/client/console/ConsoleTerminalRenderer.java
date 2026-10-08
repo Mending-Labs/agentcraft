@@ -14,6 +14,7 @@ import dev.agentcraft.client.hud.Keys;
 import dev.agentcraft.client.hud.UiBits;
 import dev.agentcraft.client.ui.Kit;
 import dev.agentcraft.client.ui.TextUtil;
+import dev.agentcraft.client.ui.Tr;
 import dev.agentcraft.client.ui.UiStyle;
 import dev.agentcraft.client.ui.WorldUi;
 import dev.agentcraft.client.world.StationRenderState;
@@ -100,7 +101,7 @@ public class ConsoleTerminalRenderer extends StationRenderer<ConsoleTerminalBloc
 		s.live = st != null && st.hasData();
 		s.stale = st == null || st.isStale();
 		s.waiting = DecisionsFeature.waitingCount();
-		s.key = Keys.terminal == null ? "Enter" : Keys.label(Keys.terminal);
+		s.key = Keys.terminal == null ? Tr.t("console.key_enter") : Keys.label(Keys.terminal);
 		s.decisionsKey = Keys.decisions == null ? "J" : Keys.label(Keys.decisions);
 		Font font = Minecraft.getInstance().font;
 		if (st != null && st.revision() != cachedRevision) {
@@ -153,7 +154,7 @@ public class ConsoleTerminalRenderer extends StationRenderer<ConsoleTerminalBloc
 				name = "Foreman";
 				nameColor = UiStyle.color("monitor.muted", 0xFF655E55);
 			} else if (UiBits.isUser(agent)) {
-				name = "You";
+				name = Tr.t("console.you");
 				nameColor = UiStyle.CLAY_DARK;
 			} else {
 				name = UiBits.agentName(agent);
@@ -246,7 +247,7 @@ public class ConsoleTerminalRenderer extends StationRenderer<ConsoleTerminalBloc
 			int haloA = (int) (60 + 150 * pulse);
 			WorldUi.submitSprite(poseStack, collector, WorldUi.Layer.OVERLAY, Kit.dot("waiting", true), 2, 0, 11, 11, 0f, (haloA << 24) | 0xFFFFFF, light);
 			WorldUi.submitSprite(poseStack, collector, WorldUi.Layer.OVERLAY, Kit.dot("waiting", false), 4, 2, 7, 7, -0.0002f, 0xFFFFFFFF, light);
-			WorldUi.submitText(poseStack, collector, s.waiting + " waiting", 14, 2, UiStyle.CLAY_DARK, light);
+			WorldUi.submitText(poseStack, collector, Tr.t("console.waiting", s.waiting), 14, 2, UiStyle.CLAY_DARK, light);
 			String key = s.decisionsKey;
 			float kw = font.width(key) + 6;
 			float kx = SW - 3 - kw;
@@ -256,8 +257,8 @@ public class ConsoleTerminalRenderer extends StationRenderer<ConsoleTerminalBloc
 			poseStack.popPose();
 			WorldUi.submitText(poseStack, collector, key, kx + 3, 2, UiStyle.color("palette.ui.text", 0xFF1F1E1D), light);
 		} else {
-			WorldUi.submitText(poseStack, collector, "Console", 4, 2, ink, light);
-			String right = s.live && s.stale ? "offline" : "";
+			WorldUi.submitText(poseStack, collector, Tr.t("console.title"), 4, 2, ink, light);
+			String right = s.live && s.stale ? Tr.t("console.terminal_offline") : "";
 			float rx = SW - 4 - font.width(right);
 			if (!right.isEmpty()) {
 				WorldUi.submitText(poseStack, collector, right, rx, 2, muted, light);
@@ -271,7 +272,7 @@ public class ConsoleTerminalRenderer extends StationRenderer<ConsoleTerminalBloc
 		FeedRow r = s.card;
 		float y = 15;
 		if (r == null) {
-			WorldUi.submitText(poseStack, collector, s.live ? "No news yet" : "Start the Foreman", 4, y + 10, muted, light);
+			WorldUi.submitText(poseStack, collector, s.live ? Tr.t("console.terminal_no_news") : Tr.t("console.terminal_start_foreman"), 4, y + 10, muted, light);
 		} else {
 			if (r.stripe() != 0) {
 				int stripe = r.stripe();
@@ -309,7 +310,7 @@ public class ConsoleTerminalRenderer extends StationRenderer<ConsoleTerminalBloc
 			WorldUi.submitText(poseStack, collector, s.draft, cx, py, ink, light);
 			cx += font.width(s.draft) + 1;
 		} else {
-			String hint = s.key + " to type";
+			String hint = Tr.t("console.terminal_to_type", s.key);
 			WorldUi.submitText(poseStack, collector, hint, cx, py, muted, light);
 			cx += font.width(hint) + 2;
 		}

@@ -15,6 +15,7 @@ import dev.agentcraft.client.foreman.Protocol.Task;
 import dev.agentcraft.client.ui.Kit;
 import dev.agentcraft.client.ui.Panels;
 import dev.agentcraft.client.ui.TextUtil;
+import dev.agentcraft.client.ui.Tr;
 import dev.agentcraft.client.ui.UiStyle;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -120,7 +121,7 @@ public final class AgentCardScreen extends Screen {
 	}
 
 	public AgentCardScreen(String agentId) {
-		super(Component.literal("Agent"));
+		super(Component.translatable("agentcraft.agents.card_title"));
 		this.agentId = agentId;
 		lastAgent = agentId;
 	}
@@ -364,7 +365,7 @@ public final class AgentCardScreen extends Screen {
 			Panels.text(g, font, TextUtil.ellipsize(font, meta, iw - pw - 5), ix + pw + 5, y, UiStyle.color("paper.path"));
 			y += 11;
 		} else {
-			Panels.text(g, font, ag.isActive() ? "No task right now" : "Off shift", ix, y, muted);
+			Panels.text(g, font, ag.isActive() ? Tr.t("agents.no_task") : Tr.t("agents.off_shift"), ix, y, muted);
 			y += 12;
 		}
 		// decisions it filed that wait on you through another agent (the lead's merge requests)
@@ -389,7 +390,7 @@ public final class AgentCardScreen extends Screen {
 		int ly = y + ip.top();
 		int start = Math.max(0, logs.size() - logRows);
 		if (logs.isEmpty()) {
-			Panels.text(g, font, "No log yet", ix + ip.left() + 1, ly, muted);
+			Panels.text(g, font, Tr.t("agents.no_log"), ix + ip.left() + 1, ly, muted);
 		}
 		for (int i = start; i < logs.size(); i++) {
 			LogEntry le = logs.get(i);
@@ -410,7 +411,7 @@ public final class AgentCardScreen extends Screen {
 		EditBox f = field;
 		if (f != null) {
 			Panels.sprite(g, Kit.TEXT_FIELD_FOCUSED, ix, y, iw, 18);
-			String tag = mode == Mode.FEEDBACK ? "changes" : "@" + ag.name();
+			String tag = mode == Mode.FEEDBACK ? Tr.t("agents.changes_tag") : "@" + ag.name();
 			int tagColor = mode == Mode.FEEDBACK ? UiStyle.color("paper.link") : UiStyle.agentOnLight(agentId);
 			int pw = Panels.pill(g, font, tag, ix + 3, y + 3, tagColor);
 			int fx = ix + 3 + pw + 4;
@@ -432,26 +433,26 @@ public final class AgentCardScreen extends Screen {
 		if (status != null && System.currentTimeMillis() < statusUntil) {
 			Panels.text(g, font, TextUtil.ellipsize(font, status, iw), ix, y, statusError ? UiStyle.color("paper.del_fg") : UiStyle.color("paper.add_fg"));
 		} else if (!live) {
-			int hx = hint(g, font, ix, y, ix + iw, "Esc", "close");
-			Panels.text(g, font, TextUtil.ellipsize(font, "Foreman offline: read only", ix + iw - hx), hx, y, muted);
+			int hx = hint(g, font, ix, y, ix + iw, Tr.t("agents.key_esc"), Tr.t("agents.hint_close"));
+			Panels.text(g, font, TextUtil.ellipsize(font, Tr.t("agents.offline_read_only"), ix + iw - hx), hx, y, muted);
 		} else if (field != null) {
-			int hx = hint(g, font, ix, y, ix + iw, "Enter", "send");
-			hint(g, font, hx, y, ix + iw, "Esc", "cancel");
+			int hx = hint(g, font, ix, y, ix + iw, Tr.t("agents.key_enter"), Tr.t("agents.hint_send"));
+			hint(g, font, hx, y, ix + iw, Tr.t("agents.key_esc"), Tr.t("agents.hint_cancel"));
 		} else if (armed >= 0 && armed < optionRows.size()) {
-			int hx = hint(g, font, ix, y, ix + iw, String.valueOf(armed + 1), "again to answer");
-			hint(g, font, hx, y, ix + iw, "Esc", "close");
+			int hx = hint(g, font, ix, y, ix + iw, String.valueOf(armed + 1), Tr.t("agents.hint_again_to_answer"));
+			hint(g, font, hx, y, ix + iw, Tr.t("agents.key_esc"), Tr.t("agents.hint_close"));
 		} else {
 			int right = ix + iw;
-			int hx = hint(g, font, ix, y, right, "M", "message");
+			int hx = hint(g, font, ix, y, right, "M", Tr.t("agents.hint_message"));
 			if (ag.isActive()) {
-				hx = hint(g, font, hx, y, right, "P", ag.isPaused() ? "resume" : "pause");
+				hx = hint(g, font, hx, y, right, "P", ag.isPaused() ? Tr.t("agents.hint_resume") : Tr.t("agents.hint_pause"));
 			}
 			if (!optionRows.isEmpty()) {
-				hx = hint(g, font, hx, y, right, optionRows.size() == 1 ? "1" : "1-" + optionRows.size(), "answer");
+				hx = hint(g, font, hx, y, right, optionRows.size() == 1 ? "1" : "1-" + optionRows.size(), Tr.t("agents.hint_answer"));
 			} else if (review.w > 0) {
-				hx = hint(g, font, hx, y, right, "R", "review");
+				hx = hint(g, font, hx, y, right, "R", Tr.t("agents.hint_review"));
 			}
-			hint(g, font, hx, y, right, "Esc", "close");
+			hint(g, font, hx, y, right, Tr.t("agents.key_esc"), Tr.t("agents.hint_close"));
 		}
 	}
 
@@ -465,14 +466,14 @@ public final class AgentCardScreen extends Screen {
 		int bw = iw - 12;
 		int by = y + 4;
 		String kind = switch (d.kind()) {
-			case MERGE -> "Merge review";
-			case PERMISSION -> "Permission";
-			default -> "Question";
+			case MERGE -> Tr.t("agents.kind_merge");
+			case PERMISSION -> Tr.t("agents.kind_permission");
+			default -> Tr.t("agents.kind_question");
 		};
 		String head = kind + " · " + d.id() + (d.taskId() != null ? " · " + d.taskId() : "");
 		Panels.text(g, font, head, bx, by, live ? UiStyle.color("paper.link") : UiStyle.color("paper.muted"));
 		if (v != null && v.awaitingCount > 1) {
-			String more = "+" + (v.awaitingCount - 1) + " more";
+			String more = Tr.t("agents.more", v.awaitingCount - 1);
 			Panels.text(g, font, more, bx + bw - font.width(more), by, UiStyle.color("paper.muted"));
 		}
 		by += 10 + 2;
@@ -487,9 +488,9 @@ public final class AgentCardScreen extends Screen {
 		by += 3;
 		if (hasReview) {
 			review.label = switch (d.kind()) {
-				case MERGE -> "Review the diff";
-				case PERMISSION -> "Decide";
-				default -> "Answer";
+				case MERGE -> Tr.t("agents.review_diff");
+				case PERMISSION -> Tr.t("agents.decide");
+				default -> Tr.t("agents.answer");
 			};
 			review.primary = true;
 			review.disabled = !live;
@@ -520,7 +521,7 @@ public final class AgentCardScreen extends Screen {
 				Panels.text(g, font, key, row.x + 7, row.y + 4, UiStyle.color("paper.text"));
 				String label = optionLabel(d, opt);
 				if (isArmed) {
-					label = "Answer: " + label;
+					label = Tr.t("agents.answer_armed", label);
 				}
 				int labelColor = row.disabled ? UiStyle.color("paper.disabled")
 					: isArmed ? UiStyle.color("palette.ui.panel_hi", UiStyle.CREAM) : UiStyle.color("paper.text");
@@ -532,7 +533,20 @@ public final class AgentCardScreen extends Screen {
 	}
 
 	private static String optionLabel(Decision d, String opt) {
-		return Protocol.REQUEST_CHANGES.equals(opt) ? opt + "…" : opt;
+		return Protocol.REQUEST_CHANGES.equals(opt) ? optionText(opt) + "…" : optionText(opt);
+	}
+
+	/** The shown text of a decision option: the protocol's own options are translated, the value sent stays the same. */
+	private static String optionText(String opt) {
+		return switch (opt) {
+			case Protocol.MERGE -> Tr.t("agents.option_merge");
+			case Protocol.REQUEST_CHANGES -> Tr.t("agents.option_request_changes");
+			case Protocol.REJECT -> Tr.t("agents.option_reject");
+			case Protocol.ALLOW_ONCE -> Tr.t("agents.option_allow_once");
+			case Protocol.ALWAYS_ALLOW -> Tr.t("agents.option_always_allow");
+			case Protocol.DENY -> Tr.t("agents.option_deny");
+			default -> opt;
+		};
 	}
 
 	private void drawButton(GuiGraphicsExtractor g, Font font, Btn b, int mouseX, int mouseY) {
@@ -551,8 +565,13 @@ public final class AgentCardScreen extends Screen {
 		String owner = AgentManager.owner(st, d);
 		Agent o = st.agent(owner);
 		String who = o != null ? o.name() : owner;
-		String what = d.kind() == DecisionKind.MERGE ? "merge of " + (d.taskId() != null ? d.taskId() : d.worktree()) : d.kind().wire();
-		return "Filed " + d.id() + " for you: " + what + " (" + who + "'s work)";
+		String what = switch (d.kind()) {
+			case MERGE -> Tr.t("agents.filed_merge_of", d.taskId() != null ? d.taskId() : d.worktree());
+			case PERMISSION -> Tr.t("agents.filed_permission");
+			case QUESTION -> Tr.t("agents.filed_question");
+			default -> d.kind().wire();
+		};
+		return Tr.t("agents.filed_line", d.id(), what, who);
 	}
 
 	/** Draws a key hint; returns the x after it (stops drawing once it would pass {@code right}). */
@@ -573,14 +592,14 @@ public final class AgentCardScreen extends Screen {
 		Btn pause = buttons[1];
 		Btn stop = buttons[2];
 		boolean on = live();
-		msg.label = field != null ? "Send" : "Message";
+		msg.label = field != null ? Tr.t("agents.send") : Tr.t("agents.message");
 		// one call to action at a time: the decision block's when there is one
 		msg.primary = field != null || owned == null;
 		msg.disabled = !on;
-		pause.label = ag.isPaused() ? "Resume" : "Pause";
+		pause.label = ag.isPaused() ? Tr.t("agents.resume") : Tr.t("agents.pause");
 		pause.primary = false;
 		pause.disabled = !on || !ag.isActive();
-		stop.label = ag.isActive() ? "Stop" : "Spawn";
+		stop.label = ag.isActive() ? Tr.t("agents.stop") : Tr.t("agents.spawn");
 		stop.primary = false;
 		stop.disabled = !on;
 		int gap = 6;
@@ -617,19 +636,27 @@ public final class AgentCardScreen extends Screen {
 
 	private static String stateLabel(Agent a, @Nullable AgentView v) {
 		if (v != null && v.stale) {
-			return "Offline";
+			return Tr.t("agents.state_offline");
 		}
 		if (!a.isActive()) {
-			return "Off shift";
+			return Tr.t("agents.off_shift");
 		}
 		if (a.isPaused()) {
-			return "Paused";
+			return Tr.t("agents.state_paused");
 		}
 		if (a.state() == AgentState.WAITING_USER || v != null && "waiting".equals(v.family)) {
-			return "Waiting for you";
+			return Tr.t("agents.state_waiting_for_you");
 		}
 		return switch (a.state()) {
-			case UNKNOWN -> "Idle";
+			case IDLE, UNKNOWN -> Tr.t("agents.state_idle");
+			case THINKING -> Tr.t("agents.state_thinking");
+			case READING -> Tr.t("agents.state_reading");
+			case EDITING -> Tr.t("agents.state_editing");
+			case RUNNING -> Tr.t("agents.state_running");
+			case TESTING -> Tr.t("agents.state_testing");
+			case BLOCKED -> Tr.t("agents.state_blocked");
+			case DONE -> Tr.t("agents.state_done");
+			case ERROR -> Tr.t("agents.state_error");
 			default -> {
 				String s = a.state().wire();
 				yield Character.toUpperCase(s.charAt(0)) + s.substring(1);
@@ -639,12 +666,12 @@ public final class AgentCardScreen extends Screen {
 
 	private static String column(Task t) {
 		return switch (t.status()) {
-			case TODO -> "To do";
-			case DOING -> "Doing";
-			case REVIEW -> "In review";
-			case DONE -> "Done";
-			case BLOCKED -> "Blocked";
-			case CANCELLED -> "Cancelled";
+			case TODO -> Tr.t("agents.column_todo");
+			case DOING -> Tr.t("agents.column_doing");
+			case REVIEW -> Tr.t("agents.column_review");
+			case DONE -> Tr.t("agents.column_done");
+			case BLOCKED -> Tr.t("agents.column_blocked");
+			case CANCELLED -> Tr.t("agents.column_cancelled");
 			default -> "";
 		};
 	}
@@ -753,7 +780,7 @@ public final class AgentCardScreen extends Screen {
 		if (s != null) {
 			this.minecraft.gui.setScreen(s);
 		} else {
-			setStatus("No review screen for " + d.id(), true);
+			setStatus(Tr.t("agents.no_review_screen", d.id()), true);
 		}
 	}
 
@@ -844,7 +871,7 @@ public final class AgentCardScreen extends Screen {
 
 	private void openField(Mode m, @Nullable String decisionId) {
 		if (field == null) {
-			EditBox f = new EditBox(this.font, x0 + 60, y0, W - 80, 10, Component.literal(m == Mode.FEEDBACK ? "Requested changes" : "Message"));
+			EditBox f = new EditBox(this.font, x0 + 60, y0, W - 80, 10, Component.translatable(m == Mode.FEEDBACK ? "agentcraft.agents.field_requested_changes" : "agentcraft.agents.message"));
 			f.setBordered(false);
 			f.setTextShadow(false);
 			f.setTextColor(UiStyle.color("paper.text"));
@@ -892,7 +919,7 @@ public final class AgentCardScreen extends Screen {
 		if (armed == i && d.id().equals(armedDecision) && now <= armedUntil) {
 			armed = -1;
 			armedDecision = null;
-			send(Foreman.answer(d.id(), opt, null), "Answered " + d.id() + ": " + opt);
+			send(Foreman.answer(d.id(), opt, null), Tr.t("agents.answered", d.id(), optionText(opt)));
 		} else {
 			armed = i;
 			armedDecision = d.id();
@@ -906,7 +933,7 @@ public final class AgentCardScreen extends Screen {
 			return;
 		}
 		if (!live()) {
-			setStatus("The Foreman is offline", true);
+			setStatus(Tr.t("agents.foreman_offline_status"), true);
 			return;
 		}
 		switch (id) {
@@ -920,10 +947,10 @@ public final class AgentCardScreen extends Screen {
 					if (mode == Mode.FEEDBACK && feedbackFor != null) {
 						String d = feedbackFor;
 						closeField();
-						send(Foreman.answer(d, Protocol.REQUEST_CHANGES, text), "Requested changes on " + d);
+						send(Foreman.answer(d, Protocol.REQUEST_CHANGES, text), Tr.t("agents.requested_changes_on", d));
 					} else {
 						closeField();
-						send(Foreman.message(agentId, text), "Sent to " + ag.name());
+						send(Foreman.message(agentId, text), Tr.t("agents.sent_to", ag.name()));
 					}
 				} else if (!openConsole(this.minecraft, "@" + agentId + " ")) {
 					openField(Mode.MESSAGE, null);
@@ -934,11 +961,11 @@ public final class AgentCardScreen extends Screen {
 					return;
 				}
 				boolean resume = ag.isPaused();
-				send(Foreman.agentAction(agentId, resume ? "resume" : "pause", null), ag.name() + (resume ? " resumed" : " paused"));
+				send(Foreman.agentAction(agentId, resume ? "resume" : "pause", null), resume ? Tr.t("agents.resumed", ag.name()) : Tr.t("agents.paused", ag.name()));
 			}
 			case "stop" -> {
 				boolean spawn = !ag.isActive();
-				send(Foreman.agentAction(agentId, spawn ? "spawn" : "stop", null), ag.name() + (spawn ? " is back on shift" : " is off shift"));
+				send(Foreman.agentAction(agentId, spawn ? "spawn" : "stop", null), spawn ? Tr.t("agents.back_on_shift", ag.name()) : Tr.t("agents.now_off_shift", ag.name()));
 			}
 			case "review" -> {
 				if (owned != null) {
@@ -962,8 +989,8 @@ public final class AgentCardScreen extends Screen {
 		statusUntil = System.currentTimeMillis() + 20_000;
 		f.whenComplete((ack, err) -> Minecraft.getInstance().execute(() -> {
 			if (err != null || ack == null || !ack.ok()) {
-				setStatus(err != null ? "Could not reach the Foreman" : ack == null ? "No answer" : "Foreman: " + (ack.error() != null ? ack.error() : "refused"),
-					true);
+				setStatus(err != null ? Tr.t("agents.foreman_unreachable") : ack == null ? Tr.t("agents.no_answer")
+					: Tr.t("agents.foreman_error", ack.error() != null ? ack.error() : Tr.t("agents.refused")), true);
 			} else {
 				setStatus(ok, false);
 			}

@@ -2,8 +2,10 @@ package dev.agentcraft.client.decisions;
 
 import dev.agentcraft.client.foreman.Foreman;
 import dev.agentcraft.client.foreman.ForemanState;
+import dev.agentcraft.client.foreman.Protocol;
 import dev.agentcraft.client.foreman.Protocol.Decision;
 import dev.agentcraft.client.foreman.Protocol.DecisionKind;
+import dev.agentcraft.client.ui.Tr;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -76,10 +78,43 @@ public final class DecisionQueue {
 	/** Human label of a kind: "question", "permission", "merge review". */
 	public static String kindLabel(DecisionKind k) {
 		return switch (k) {
-			case PERMISSION -> "permission";
-			case MERGE -> "merge review";
-			case QUESTION -> "question";
-			default -> "decision";
+			case PERMISSION -> Tr.t("decisions.kind_permission");
+			case MERGE -> Tr.t("decisions.kind_merge");
+			case QUESTION -> Tr.t("decisions.kind_question");
+			default -> Tr.t("decisions.kind_decision");
 		};
+	}
+
+	/**
+	 * Display label of an option. The option itself (sent back to the Foreman as the answer) is never
+	 * translated: only the known merge / permission options get a translated label; anything else
+	 * (a question's options, written by the agent) is shown as received.
+	 */
+	public static String optionLabel(DecisionKind k, String option) {
+		if (k == DecisionKind.MERGE) {
+			switch (option) {
+				case Protocol.MERGE:
+					return Tr.t("decisions.option_merge");
+				case Protocol.REQUEST_CHANGES:
+					return Tr.t("decisions.option_request_changes");
+				case Protocol.REJECT:
+					return Tr.t("decisions.option_reject");
+				default:
+					return option;
+			}
+		}
+		if (k == DecisionKind.PERMISSION) {
+			switch (option) {
+				case Protocol.ALLOW_ONCE:
+					return Tr.t("decisions.option_allow_once");
+				case Protocol.ALWAYS_ALLOW:
+					return Tr.t("decisions.option_always_allow");
+				case Protocol.DENY:
+					return Tr.t("decisions.option_deny");
+				default:
+					return option;
+			}
+		}
+		return option;
 	}
 }

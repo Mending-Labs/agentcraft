@@ -2,6 +2,7 @@ package dev.agentcraft.client.hud;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import dev.agentcraft.AgentCraft;
+import dev.agentcraft.client.ui.Tr;
 import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.input.KeyEvent;
@@ -55,14 +56,14 @@ public final class Keys {
 	/** Spell out tiny punctuation glyphs; cut long names to 9 characters. */
 	public static String readable(String s) {
 		String word = switch (s) {
-			case "`" -> "Backtick";
-			case "'" -> "Quote";
-			case "´" -> "Accent";
-			case "," -> "Comma";
-			case "." -> "Period";
-			case ";" -> "Semicolon";
-			case ":" -> "Colon";
-			case "|" -> "Bar";
+			case "`" -> Tr.t("hud.key_backtick");
+			case "'" -> Tr.t("hud.key_quote");
+			case "´" -> Tr.t("hud.key_accent");
+			case "," -> Tr.t("hud.key_comma");
+			case "." -> Tr.t("hud.key_period");
+			case ";" -> Tr.t("hud.key_semicolon");
+			case ":" -> Tr.t("hud.key_colon");
+			case "|" -> Tr.t("hud.key_bar");
 			default -> s;
 		};
 		return word.length() > 9 ? word.substring(0, 9) : word;

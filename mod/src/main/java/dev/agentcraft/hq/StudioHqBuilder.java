@@ -16,6 +16,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import net.minecraft.core.Direction;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.level.block.Block;
@@ -157,7 +159,7 @@ public final class StudioHqBuilder implements HqBuilder {
 	}
 
 	@Override
-	public @Nullable String build(ServerLevel level, Anchors.Builder a, Options options) {
+	public @Nullable Report build(ServerLevel level, Anchors.Builder a, Options options) {
 		long t0 = System.nanoTime();
 		Plan p = new Plan(SITE[0], SITE[1], SITE[2], SITE[3], SITE[4], SITE[5], GROUND, y -> y > GROUND ? AIR
 			: y == GROUND ? Blocks.GRASS_BLOCK.defaultBlockState() : y >= GROUND - 3 ? Blocks.DIRT.defaultBlockState() : Blocks.STONE.defaultBlockState());
@@ -196,18 +198,23 @@ public final class StudioHqBuilder implements HqBuilder {
 			AgentCraft.LOGGER.info("Studio HQ: kept your changes at {}", st.keptSample());
 		}
 		StringBuilder r = new StringBuilder(String.format(Locale.ROOT, "%d blocks updated", st.changed() + st.connected()));
+		MutableComponent m = Component.translatable("agentcraft.hq.report_updated", st.changed() + st.connected());
 		if (st.kept() > 0) {
 			r.append(String.format(Locale.ROOT, "; kept %d block%s you changed since the last build (/agentcraft hq force resets them)", st.kept(),
 				st.kept() == 1 ? "" : "s"));
+			m.append("; ").append(Component.translatable(st.kept() == 1 ? "agentcraft.hq.report_kept_one" : "agentcraft.hq.report_kept_many", st.kept()));
 		}
 		if (st.foreign() > 0) {
 			r.append(String.format(Locale.ROOT, "; replaced %d block%s that were not part of the HQ%s", st.foreign(), st.foreign() == 1 ? "" : "s",
 				options.force() ? " (force)" : " (first studio build here, or another HQ builder ran since the last one)"));
+			m.append("; ").append(Component.translatable(st.foreign() == 1 ? "agentcraft.hq.report_replaced_one" : "agentcraft.hq.report_replaced_many",
+				st.foreign(), Component.translatable(options.force() ? "agentcraft.hq.report_reason_force" : "agentcraft.hq.report_reason_foreign")));
 		}
 		if (st.items() > 0) {
 			r.append(String.format(Locale.ROOT, "; removed %d dropped item%s", st.items(), st.items() == 1 ? "" : "s"));
+			m.append("; ").append(Component.translatable(st.items() == 1 ? "agentcraft.hq.report_items_one" : "agentcraft.hq.report_items_many", st.items()));
 		}
-		return r.toString();
+		return new Report(r.toString(), m);
 	}
 
 	/** Desk bay owners, west to east (see {@link #DESK_ORDER}). */

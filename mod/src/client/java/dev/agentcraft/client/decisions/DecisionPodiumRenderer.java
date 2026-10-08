@@ -11,6 +11,7 @@ import dev.agentcraft.client.hud.Keys;
 import dev.agentcraft.client.hud.UiBits;
 import dev.agentcraft.client.ui.Kit;
 import dev.agentcraft.client.ui.TextUtil;
+import dev.agentcraft.client.ui.Tr;
 import dev.agentcraft.client.ui.UiStyle;
 import dev.agentcraft.client.ui.WorldUi;
 import dev.agentcraft.client.world.StationRenderState;
@@ -106,7 +107,7 @@ public class DecisionPodiumRenderer extends StationRenderer<DecisionPodiumBlockE
 		Cache c = cache;
 		if (c == null || c.revision() != s.foremanRevision || !c.decisionId().equals(d.id()) || c.count() != s.count) {
 			Font font = Minecraft.getInstance().font;
-			String header = s.count == 1 ? "1 decision waiting" : s.count + " decisions waiting";
+			String header = s.count == 1 ? Tr.t("decisions.podium_waiting_one") : Tr.t("decisions.podium_waiting_many", s.count);
 			String name = UiBits.agentName(d.agentId());
 			String kind = " · " + DecisionQueue.kindLabel(d.kind());
 			int inner = W - 16;

@@ -5,6 +5,7 @@ import dev.agentcraft.block.MonitorBlock;
 import dev.agentcraft.block.entity.MonitorBlockEntity;
 import dev.agentcraft.client.foreman.Foreman;
 import dev.agentcraft.client.foreman.ForemanState;
+import dev.agentcraft.client.ui.Tr;
 import dev.agentcraft.client.ui.UiStyle;
 import dev.agentcraft.client.ui.WorldUi;
 import dev.agentcraft.client.world.StationRenderState;
@@ -228,7 +229,8 @@ public class MonitorRenderer extends StationRenderer<MonitorBlockEntity, Monitor
 		ps.translate(0, 0, 0);
 		c.order(0).submitCustomGeometry(ps, DisplayDraw.fillTranslucent(), (pose, vc) -> m.veil.emit(pose, vc, 255, -1));
 		// the badge keeps clear of the bezel lip: narrow screens say just "Offline" next to the red dot
-		String label = font.width(DisplayText.OFFLINE) + 18 <= (m.cx1 - m.cx0) ? DisplayText.OFFLINE : "Offline";
+		String full = DisplayText.offline();
+		String label = font.width(full) + 18 <= (m.cx1 - m.cx0) ? full : Tr.t("monitor.offline_short");
 		int tw = font.width(label);
 		float w = tw + 18;
 		float h = 14;
@@ -252,7 +254,7 @@ public class MonitorRenderer extends StationRenderer<MonitorBlockEntity, Monitor
 		ps.pushPose();
 		ps.translate(0, 0, Z_TEXT);
 		int muted = UiStyle.color("status.idle", 0xFF9C9488);
-		String label = m.mode == MonitorScreen.Mode.OFF_SHIFT ? "off shift" : "screen off";
+		String label = Tr.t(m.mode == MonitorScreen.Mode.OFF_SHIFT ? "monitor.off_shift_quiet" : "monitor.screen_off");
 		WorldUi.submitText(ps, c, label, m.cx0, m.by1 - MonitorScreen.PAD_BOTTOM - 9, muted, light);
 		ps.popPose();
 	}

@@ -7,6 +7,7 @@ import dev.agentcraft.client.foreman.Protocol;
 import dev.agentcraft.client.ui.Kit;
 import dev.agentcraft.client.ui.Panels;
 import dev.agentcraft.client.ui.TextUtil;
+import dev.agentcraft.client.ui.Tr;
 import dev.agentcraft.client.ui.UiStyle;
 import java.util.HashMap;
 import java.util.Map;
@@ -192,7 +193,7 @@ public final class ReviewKit {
 			return "";
 		}
 		if ("user".equals(id)) {
-			return "You";
+			return Tr.t("diff.you");
 		}
 		Protocol.Agent a = Foreman.state() == null ? null : Foreman.state().agent(id);
 		if (a != null) {
@@ -259,18 +260,23 @@ public final class ReviewKit {
 		}
 		long s = Math.max(0, (System.currentTimeMillis() - ts) / 1000);
 		if (s < 10) {
-			return "just now";
+			return Tr.t("diff.ago_now");
 		}
 		if (s < 60) {
-			return s + "s ago";
+			return Tr.t("diff.ago_seconds", s);
 		}
 		if (s < 3600) {
-			return (s / 60) + "m ago";
+			return Tr.t("diff.ago_minutes", s / 60);
 		}
 		if (s < 86400) {
-			return (s / 3600) + "h ago";
+			return Tr.t("diff.ago_hours", s / 3600);
 		}
-		return (s / 86400) + "d ago";
+		return Tr.t("diff.ago_days", s / 86400);
+	}
+
+	/** "1 file" / "3 files". */
+	public static String filesCount(int n) {
+		return Tr.t(n == 1 ? "diff.files_one" : "diff.files_many", n);
 	}
 
 	// ------------------------------------------------------------------ CI
@@ -287,10 +293,10 @@ public final class ReviewKit {
 
 	public static String ciLabel(Protocol.CiStatus ci) {
 		return switch (ci) {
-			case PASS -> "tests pass";
-			case FAIL -> "tests failing";
-			case RUNNING -> "tests running";
-			default -> "no test run";
+			case PASS -> Tr.t("diff.ci_pass");
+			case FAIL -> Tr.t("diff.ci_fail");
+			case RUNNING -> Tr.t("diff.ci_running");
+			default -> Tr.t("diff.ci_none");
 		};
 	}
 

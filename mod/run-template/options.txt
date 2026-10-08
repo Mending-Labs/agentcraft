@@ -22,4 +22,4 @@ telemetryOptInExtra:false
 showAutosaveIndicator:false
 autoJump:false
 hideSplashTexts:true
-lang:en_us
+lang:fr_fr

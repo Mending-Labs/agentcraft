@@ -11,6 +11,7 @@ import dev.agentcraft.client.foreman.Protocol.NotifyLevel;
 import dev.agentcraft.client.ui.Kit;
 import dev.agentcraft.client.ui.Panels;
 import dev.agentcraft.client.ui.TextUtil;
+import dev.agentcraft.client.ui.Tr;
 import dev.agentcraft.client.ui.UiStyle;
 import java.util.ArrayList;
 import java.util.List;
@@ -86,8 +87,8 @@ public final class Toasts implements HudElement {
 			}
 		}
 		String title = switch (n.level()) {
-			case NEED_USER -> (agentId != null ? UiBits.agentName(agentId) : "Your team") + " needs you";
-			case WARN -> agentId != null ? UiBits.agentName(agentId) : "Heads up";
+			case NEED_USER -> Tr.t("hud.toast_needs_you", agentId != null ? UiBits.agentName(agentId) : Tr.t("hud.your_team"));
+			case WARN -> agentId != null ? UiBits.agentName(agentId) : Tr.t("hud.heads_up");
 			default -> agentId != null ? UiBits.agentName(agentId) : "Foreman";
 		};
 		long life = switch (n.level()) {
@@ -186,8 +187,9 @@ public final class Toasts implements HudElement {
 		}
 		if (need && a > 200) {
 			String key = Keys.decisions == null ? "J" : Keys.label(Keys.decisions);
-			int hw = UiBits.hintsWidth(font, key, "answer");
-			UiBits.hints(g, font, x + W - p.right() - hw, ly, false, key, "answer");
+			String verb = Tr.t("hud.hint_answer");
+			int hw = UiBits.hintsWidth(font, key, verb);
+			UiBits.hints(g, font, x + W - p.right() - hw, ly, false, key, verb);
 		}
 		return h;
 	}

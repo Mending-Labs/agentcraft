@@ -5,6 +5,7 @@ import dev.agentcraft.client.foreman.Foreman;
 import dev.agentcraft.client.foreman.Protocol.Decision;
 import dev.agentcraft.client.foreman.Protocol.Diff;
 import dev.agentcraft.client.foreman.Protocol.DiffFile;
+import dev.agentcraft.client.ui.Tr;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -66,12 +67,12 @@ public final class DiffLink {
 		return Foreman.requestDiff(repoId, worktree).handle((diff, err) -> {
 			List<SummaryLine> out = new ArrayList<>();
 			if (err != null || diff == null) {
-				String msg = err == null ? "no diff" : err.getCause() != null ? err.getCause().getMessage() : err.getMessage();
-				out.add(new SummaryLine("diff " + worktree + ": " + msg, false, true, 0, 0));
+				String msg = err == null ? Tr.t("decisions.no_diff") : err.getCause() != null ? err.getCause().getMessage() : err.getMessage();
+				out.add(new SummaryLine(Tr.t("decisions.diff_error", worktree, msg), false, true, 0, 0));
 				return out;
 			}
 			if (diff.error() != null) {
-				out.add(new SummaryLine("diff " + worktree + ": " + diff.error(), false, true, 0, 0));
+				out.add(new SummaryLine(Tr.t("decisions.diff_error", worktree, diff.error()), false, true, 0, 0));
 				return out;
 			}
 			out.add(new SummaryLine(header(diff), true, false, diff.stats().additions(), diff.stats().deletions()));
@@ -79,7 +80,7 @@ public final class DiffLink {
 				out.add(new SummaryLine(fileLine(f), false, false, f.additions(), f.deletions()));
 			}
 			if (diff.truncated()) {
-				out.add(new SummaryLine("(large diff: some hunks were cut)", false, false, 0, 0));
+				out.add(new SummaryLine(Tr.t("decisions.diff_truncated"), false, false, 0, 0));
 			}
 			return out;
 		});
@@ -87,17 +88,22 @@ public final class DiffLink {
 
 	public static String header(Diff diff) {
 		String br = diff.branch() != null ? diff.branch() : diff.worktree();
-		return br + (diff.base() != null ? " → " + diff.base() : "") + ": " + diff.stats().files() + (diff.stats().files() == 1 ? " file" : " files")
-			+ ", +" + diff.stats().additions() + " −" + diff.stats().deletions();
+		String target = br + (diff.base() != null ? " → " + diff.base() : "");
+		return Tr.t("decisions.diff_header", target, filesCount(diff.stats().files()), diff.stats().additions(), diff.stats().deletions());
+	}
+
+	/** "1 file" / "3 files". */
+	public static String filesCount(int n) {
+		return Tr.t(n == 1 ? "decisions.files_one" : "decisions.files_many", n);
 	}
 
 	public static String fileLine(DiffFile f) {
-		String st = switch (f.status()) {
-			case ADDED -> "new ";
-			case DELETED -> "deleted ";
-			case RENAMED -> "renamed ";
-			default -> "";
+		String p = f.path() + (f.binary() ? Tr.t("decisions.file_binary_suffix") : "");
+		return switch (f.status()) {
+			case ADDED -> Tr.t("decisions.file_added", p);
+			case DELETED -> Tr.t("decisions.file_deleted", p);
+			case RENAMED -> Tr.t("decisions.file_renamed", p);
+			default -> p;
 		};
-		return st + f.path() + (f.binary() ? " (binary)" : "");
 	}
 }

@@ -33,8 +33,8 @@ public final class AgentCraftCommands {
 	public static void init() {
 		sub(root -> root.then(Commands.literal("anchors").executes(ctx -> {
 			Anchors.Layout layout = Anchors.current();
-			ctx.getSource().sendSuccess(() -> Component.literal("Layout '" + layout.name() + "' rev " + layout.revision() + ": "
-				+ layout.anchors().size() + " anchors"), false);
+			ctx.getSource().sendSuccess(() -> Component.translatable("agentcraft.command.anchors_header", layout.name(), layout.revision(),
+				layout.anchors().size()), false);
 			for (Anchor a : layout.anchors().values()) {
 				ctx.getSource().sendSuccess(() -> Component.literal(String.format(Locale.ROOT, "  %s  %.2f %.2f %.2f  yaw %.0f pitch %.0f",
 					a.name(), a.x(), a.y(), a.z(), a.yaw(), a.pitch())), false);

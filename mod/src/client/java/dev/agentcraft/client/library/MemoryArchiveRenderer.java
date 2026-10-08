@@ -10,6 +10,7 @@ import dev.agentcraft.client.foreman.Foreman;
 import dev.agentcraft.client.foreman.Protocol.MemoryEntry;
 import dev.agentcraft.client.ui.Kit;
 import dev.agentcraft.client.ui.TextUtil;
+import dev.agentcraft.client.ui.Tr;
 import dev.agentcraft.client.ui.UiStyle;
 import dev.agentcraft.client.ui.WorldUi;
 import dev.agentcraft.client.world.StationRenderState;
@@ -100,7 +101,7 @@ public class MemoryArchiveRenderer extends StationRenderer<MemoryArchiveBlockEnt
 		if (k == 0) {
 			s.show = true;
 			s.plate = true;
-			s.label = scope.isEmpty() ? "Memory" : MemoryIndex.scopeLabel(scope);
+			s.label = scope.isEmpty() ? Tr.t("library.plate_memory") : MemoryIndex.scopeLabel(scope);
 			int n = MemoryIndex.count(scope);
 			s.count = String.valueOf(n);
 			s.fresh = MemoryIndex.unread(scope) > 0;

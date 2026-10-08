@@ -88,9 +88,9 @@ public final class StatusMap {
 			return null;
 		}
 		return switch (d.kind()) {
-			case MERGE -> "your merge";
-			case PERMISSION -> "your OK";
-			default -> "your answer";
+			case MERGE -> Tr.t("ui.needs_your_merge");
+			case PERMISSION -> Tr.t("ui.needs_your_ok");
+			default -> Tr.t("ui.needs_your_answer");
 		};
 	}
 

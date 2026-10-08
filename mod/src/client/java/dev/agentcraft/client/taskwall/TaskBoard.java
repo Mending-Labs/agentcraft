@@ -10,6 +10,7 @@ import dev.agentcraft.client.monitor.DisplayDraw;
 import dev.agentcraft.client.ui.Kit;
 import dev.agentcraft.client.ui.StatusMap;
 import dev.agentcraft.client.ui.TextUtil;
+import dev.agentcraft.client.ui.Tr;
 import dev.agentcraft.client.ui.UiStyle;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -85,14 +86,18 @@ final class TaskBoard {
 	}
 
 	enum Col {
-		TODO("Todo", "todo"), DOING("Doing", "doing"), REVIEW("Review", "review"), DONE("Done", "done");
+		TODO("todo"), DOING("doing"), REVIEW("review"), DONE("done");
 
-		final String label;
+		/** Protocol status / kit sprite name; the header text comes from {@link #label()}. */
 		final String card;
 
-		Col(String label, String card) {
-			this.label = label;
+		Col(String card) {
 			this.card = card;
+		}
+
+		/** Header text, translated (resolved at layout time, never in a static initializer). */
+		String label() {
+			return Tr.t("taskwall.col_" + card);
 		}
 	}
 
@@ -521,16 +526,16 @@ final class TaskBoard {
 				case REVIEW -> col.needYou > 0 ? "waiting" : "thinking";
 				case DONE -> "done";
 			};
-			String label = listMode ? "TASKS" : col.col.label.toUpperCase(Locale.ROOT);
+			String label = listMode ? Tr.t("taskwall.header_tasks") : col.col.label().toUpperCase(Locale.ROOT);
 			String cs = Integer.toString(col.count);
 			// an explicit "1 blocked" chip (not a red dot next to the count, which read as "4 blocked")
-			String bl = col.blocked > 0 ? col.blocked + " blocked" : "";
+			String bl = col.blocked > 0 ? Tr.t(col.blocked == 1 ? "taskwall.blocked_one" : "taskwall.blocked_many", col.blocked) : "";
 			if (!bl.isEmpty() && font.width(label) + font.width(cs) + font.width(bl) + 24 > col.w) {
 				bl = col.blocked + "!";
 			}
 			if (font.width(label) + font.width(cs) + (bl.isEmpty() ? 0 : font.width(bl) + 12) + 12 > col.w) {
 				// tiny board: the count says it all
-				label = cs + (listMode ? " tasks" : "");
+				label = listMode ? Tr.t("taskwall.n_tasks", cs) : cs;
 				cs = "";
 			}
 			col.blockedSeq = seq(bl);
@@ -604,7 +609,7 @@ final class TaskBoard {
 				}
 			}
 			if (!col.hidden.isEmpty()) {
-				String more = "+" + col.hidden.size() + " more";
+				String more = Tr.t("taskwall.n_more", col.hidden.size());
 				col.chip = seq(more);
 				col.chipW = font.width(more) + 10;
 				col.chipY = rowY[plan.shownRows()] - 1;
@@ -630,7 +635,7 @@ final class TaskBoard {
 	private static float emptyWidth(Font font) {
 		int w = 0;
 		for (Col c : Col.values()) {
-			w = Math.max(w, font.width(c.label.toUpperCase(Locale.ROOT)));
+			w = Math.max(w, font.width(c.label().toUpperCase(Locale.ROOT)));
 		}
 		return Math.max(48, w + font.width("0") + 14);
 	}
@@ -921,6 +926,7 @@ final class TaskBoard {
 		// footer hint (right): the most useful single fact
 		String hint;
 		int hintColor = muted;
+		boolean depsHint = false;
 		List<String> pending = new ArrayList<>();
 		if (s != null) {
 			for (String d : t.deps()) {
@@ -935,18 +941,19 @@ final class TaskBoard {
 			hint = t.id(); // the reason has its own lines above the footer
 		} else if (blocked) {
 			String why = t.blockedReason() == null ? "" : t.blockedReason().replace("`", "").strip();
-			hint = why.isEmpty() ? "blocked" : why;
+			hint = why.isEmpty() ? Tr.t("taskwall.hint_blocked") : why;
 			hintColor = error;
 		} else if (yours != null) {
 			hint = yours;
 			hintColor = UiStyle.CLAY_DARK;
 		} else if (t.ci() == CiStatus.FAIL && !done) {
-			hint = "CI failing";
+			hint = Tr.t("taskwall.hint_ci_failing");
 			hintColor = error;
 		} else if (!pending.isEmpty() && !done) {
-			hint = "after " + String.join(", ", pending);
+			hint = Tr.t("taskwall.hint_after", String.join(", ", pending));
+			depsHint = true;
 		} else if (t.ci() == CiStatus.RUNNING) {
-			hint = "CI running";
+			hint = Tr.t("taskwall.hint_ci_running");
 		} else if (t.priority() > 0 && c.col == Col.TODO) {
 			hint = "P" + t.priority() + "  " + t.id();
 		} else {
@@ -967,7 +974,7 @@ final class TaskBoard {
 		}
 		int room = (int) (inner - footerLeft);
 		if (font.width(hint) > room) {
-			hint = blocked || hintColor == error || hint.startsWith("after") ? TextUtil.ellipsize(font, hint, room)
+			hint = blocked || hintColor == error || depsHint ? TextUtil.ellipsize(font, hint, room)
 				: font.width(t.id()) <= room ? t.id() : "";
 		}
 		o.hint = hint.isEmpty() ? null : seq(hint);

@@ -11,6 +11,7 @@ import dev.agentcraft.client.foreman.Protocol.MemoryEntry;
 import dev.agentcraft.client.ui.Kit;
 import dev.agentcraft.client.ui.Panels;
 import dev.agentcraft.client.ui.TextUtil;
+import dev.agentcraft.client.ui.Tr;
 import dev.agentcraft.client.ui.UiStyle;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -74,7 +75,7 @@ public final class LibraryScreen extends Screen {
 	private int textH;
 
 	public LibraryScreen(@Nullable String scope, @Nullable String memoryId) {
-		super(Component.literal("Memory library"));
+		super(Component.translatable("agentcraft.library.title"));
 		this.scope = scope == null ? MemoryIndex.ALL : scope;
 		this.selectedId = memoryId;
 	}
@@ -281,13 +282,14 @@ public final class LibraryScreen extends Screen {
 	private void drawHeader(GuiGraphicsExtractor g) {
 		Panels.sprite(g, Kit.HEADER, ix, iy, iw, 14);
 		Panels.sprite(g, Kit.icon("memory"), ix + 4, iy + 1, 12, 12);
-		ReviewKit.bold(g, font, "Memory library", ix + 20, iy + 3, ReviewKit.ink());
+		ReviewKit.bold(g, font, Tr.t("library.title"), ix + 20, iy + 3, ReviewKit.ink());
 		int n = MemoryIndex.count(MemoryIndex.ALL);
 		long newest = MemoryIndex.newest(MemoryIndex.ALL);
-		String right = n == 0 ? "empty" : n + (n == 1 ? " note" : " notes") + (newest > 0 ? " · updated " + ReviewKit.ago(newest) : "");
+		String right = n == 0 ? Tr.t("library.empty") : Tr.t(n == 1 ? "library.notes_one" : "library.notes_many", n)
+			+ (newest > 0 ? " · " + Tr.t("library.updated", ReviewKit.ago(newest)) : "");
 		ForemanState s = Foreman.state();
 		if (s != null && s.isStale()) {
-			right = "Foreman offline, last known · " + right;
+			right = Tr.t("library.offline_last_known", right);
 		}
 		g.text(font, right, ix + iw - 5 - font.width(right), iy + 3, ReviewKit.muted(), false);
 	}
@@ -341,7 +343,7 @@ public final class LibraryScreen extends Screen {
 		listScroll = Math.max(0, Math.min(listScroll, Math.max(0, content - h)));
 		int muted = ReviewKit.muted();
 		if (entries.isEmpty()) {
-			String m = scope.isEmpty() ? "No notes yet" : "No notes in this scope";
+			String m = Tr.t(scope.isEmpty() ? "library.no_notes" : "library.no_notes_scope");
 			g.text(font, m, x + 6, top + 8, muted, false);
 			return;
 		}
@@ -364,14 +366,14 @@ public final class LibraryScreen extends Screen {
 			int right = x + w - 5;
 			if (MemoryIndex.isUnread(e) && !sel) {
 				// written since you last read it: a quiet clay "NEW" tab (not a status dot)
-				String nw = "NEW";
+				String nw = Tr.t("library.chip_new");
 				int nwW = font.width(nw) + 6;
 				ReviewKit.chip(g, font, nw, right - nwW, y + 3, ReviewKit.mix(UiStyle.color("palette.ui.panel"), UiStyle.CLAY, 0.2f), UiStyle.color(
 					"paper.link"));
 				right -= nwW + 4;
 			}
 			if (MemoryIndex.isPlan(e)) {
-				int cw = ReviewKit.chip(g, font, "PLAN", tx, y + 3, ReviewKit.mix(UiStyle.color("palette.ui.panel"), UiStyle.BRASS, 0.32f), UiStyle.color(
+				int cw = ReviewKit.chip(g, font, Tr.t("library.chip_plan"), tx, y + 3, ReviewKit.mix(UiStyle.color("palette.ui.panel"), UiStyle.BRASS, 0.32f), UiStyle.color(
 					"paper.path"));
 				tx += cw + 4;
 			}
@@ -389,7 +391,7 @@ public final class LibraryScreen extends Screen {
 			}
 			StringBuilder meta = new StringBuilder();
 			if (scope.isEmpty()) {
-				meta.append(author != null ? " · " : "").append(e.scope().equals("shared") ? "shared" : "private");
+				meta.append(author != null ? " · " : "").append(Tr.t(e.scope().equals("shared") ? "library.shared" : "library.private"));
 			}
 			String age = ReviewKit.ago(e.updated());
 			if (!age.isEmpty()) {
@@ -422,8 +424,8 @@ public final class LibraryScreen extends Screen {
 			MemoryIndex.markSeen(e);
 		}
 		if (e == null) {
-			String m1 = "No memory yet";
-			String m2 = "The lead writes the plan here when you give the team a goal.";
+			String m1 = Tr.t("library.no_memory");
+			String m2 = Tr.t("library.no_memory_hint");
 			g.text(font, m1, x + (w - font.width(m1)) / 2, y + h / 2 - 10, ReviewKit.ink(), false);
 			String m = TextUtil.ellipsize(font, m2, w - 20);
 			g.text(font, m, x + (w - font.width(m)) / 2, y + h / 2 + 2, muted, false);
@@ -434,7 +436,7 @@ public final class LibraryScreen extends Screen {
 		int ty = y + 8;
 		String title = e.title();
 		int titleW = textW;
-		String scopeText = e.scope().equals("shared") ? "shared" : "private to " + ReviewKit.agentName(e.scope());
+		String scopeText = e.scope().equals("shared") ? Tr.t("library.shared") : Tr.t("library.private_to", ReviewKit.agentName(e.scope()));
 		ReviewKit.bold(g, font, TextUtil.ellipsize(font, title, titleW), tx, ty, ReviewKit.ink());
 		int my0 = ty + 13;
 		int ax = tx;
@@ -445,7 +447,7 @@ public final class LibraryScreen extends Screen {
 			g.text(font, name, ax, my0, ReviewKit.agentInk(e.author()), false);
 			ax += font.width(name) + 4;
 		}
-		String meta = "updated " + ReviewKit.ago(e.updated()) + " · " + scopeText;
+		String meta = Tr.t("library.updated", ReviewKit.ago(e.updated())) + " · " + scopeText;
 		g.text(font, TextUtil.ellipsize(font, meta, tx + textW - ax), ax, my0, muted, false);
 		Panels.divider(g, tx, my0 + 11, textW + 6);
 		if (body == null) {
@@ -496,7 +498,8 @@ public final class LibraryScreen extends Screen {
 		if (flash != null && now < flashUntil) {
 			g.text(font, flash, ix + iw - font.width(flash), y + 2, UiStyle.color("paper.add_fg"), false);
 		}
-		String[][] hints = {{"↑ ↓", "note"}, {"Tab", "scope"}, {"j k", "scroll"}, {"c", "copy"}, {"Esc", "close"}};
+		String[][] hints = {{"↑ ↓", Tr.t("library.hint_note")}, {"Tab", Tr.t("library.hint_scope")}, {"j k", Tr.t("library.hint_scroll")},
+			{"c", Tr.t("library.hint_copy")}, {Tr.t("library.key_esc"), Tr.t("library.hint_close")}};
 		int x = ix;
 		int limit = flash != null && now < flashUntil ? ix + iw - font.width(flash) - 10 : ix + iw;
 		for (String[] h : hints) {
@@ -568,7 +571,7 @@ public final class LibraryScreen extends Screen {
 			return;
 		}
 		minecraft.keyboardHandler.setClipboard(e.body());
-		flash = "Copied \"" + TextUtil.ellipsize(font, e.title(), 140) + "\" as markdown";
+		flash = Tr.t("library.copied", TextUtil.ellipsize(font, e.title(), 140));
 		flashUntil = System.currentTimeMillis() + 2500;
 	}
 

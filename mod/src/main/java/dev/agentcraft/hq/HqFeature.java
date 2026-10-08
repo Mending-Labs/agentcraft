@@ -13,6 +13,7 @@ import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.server.level.ServerLevel;
 import org.jspecify.annotations.Nullable;
 
@@ -27,6 +28,8 @@ public final class HqFeature {
 
 	/** The report of the last build (for QA: {@code dev.state.hq.lastBuild}). */
 	private static volatile @Nullable String lastReport;
+	/** The full report of the last build (its chat message for {@code /agentcraft hq}). */
+	private static volatile HqBuilder.@Nullable Report lastBuild;
 
 	public static @Nullable String lastReport() {
 		return lastReport;
@@ -77,14 +80,13 @@ public final class HqFeature {
 	 * AgentCraft HQ world unless AGENTCRAFT_HQ_ANYWORLD=1 (-Dagentcraft.hq.anyworld=1) opts in, and
 	 * never in a Hardcore world.
 	 */
-	private static @Nullable String refusal(CommandSourceStack source) {
+	private static @Nullable Component refusal(CommandSourceStack source) {
 		var server = source.getServer();
 		if (server.getWorldData().isHardcore()) {
-			return "/agentcraft hq never builds in a Hardcore world (it rewrites terrain and moves the spawn)";
+			return Component.translatable("agentcraft.hq.refused_hardcore");
 		}
 		if (!HqWorld.isHq(server) && !anyWorld()) {
-			return "/agentcraft hq only builds in the \"" + HqWorld.LEVEL_NAME + "\" world; to build into this world on purpose,"
-				+ " back it up and start the game with -Dagentcraft.hq.anyworld=1";
+			return Component.translatable("agentcraft.hq.refused_world", HqWorld.LEVEL_NAME, "-Dagentcraft.hq.anyworld=1");
 		}
 		return null;
 	}
@@ -98,14 +100,14 @@ public final class HqFeature {
 	}
 
 	private static int build(CommandContext<CommandSourceStack> ctx, String id, boolean force) {
-		String refused = refusal(ctx.getSource());
+		Component refused = refusal(ctx.getSource());
 		if (refused != null) {
-			ctx.getSource().sendFailure(Component.literal(refused));
+			ctx.getSource().sendFailure(refused);
 			return 0;
 		}
 		HqBuilder builder = HqBuilders.get(id);
 		if (builder == null) {
-			ctx.getSource().sendFailure(Component.literal("Unknown HQ builder '" + id + "' (known: " + HqBuilders.ids() + ")"));
+			ctx.getSource().sendFailure(Component.translatable("agentcraft.hq.unknown_builder", id, String.valueOf(HqBuilders.ids())));
 			return 0;
 		}
 		Anchors.Layout layout;
@@ -113,12 +115,14 @@ public final class HqFeature {
 			layout = buildAndPublish(ctx.getSource().getLevel(), builder, new HqBuilder.Options(force));
 		} catch (RuntimeException e) {
 			AgentCraft.LOGGER.error("HQ builder '{}' failed", id, e);
-			ctx.getSource().sendFailure(Component.literal("HQ builder '" + id + "' failed: " + e));
+			ctx.getSource().sendFailure(Component.translatable("agentcraft.hq.builder_failed", id, String.valueOf(e)));
 			return 0;
 		}
-		String report = lastReport;
-		ctx.getSource().sendSuccess(() -> Component.literal("Built HQ '" + id + "': " + layout.anchors().size() + " anchors"
-			+ (report == null ? "" : ". " + report)), true);
+		HqBuilder.Report report = lastBuild;
+		ctx.getSource().sendSuccess(() -> {
+			MutableComponent msg = Component.translatable("agentcraft.hq.built", id, layout.anchors().size());
+			return report == null ? msg : msg.append(". ").append(report.message());
+		}, true);
 		return layout.anchors().size();
 	}
 
@@ -133,7 +137,9 @@ public final class HqFeature {
 		// build no longer describes the world
 		PlanStore.invalidateUnless(level.getServer(), builder.id());
 		Anchors.Builder anchors = Anchors.builder(builder.id());
-		lastReport = builder.build(level, anchors, options);
+		HqBuilder.Report report = builder.build(level, anchors, options);
+		lastBuild = report;
+		lastReport = report == null ? null : report.log();
 		Anchors.Layout layout = anchors.build();
 		Anchors.publish(level.getServer(), layout);
 		Anchor spawn = layout.get(AnchorNames.SPAWN);

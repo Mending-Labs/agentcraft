@@ -8,6 +8,7 @@ import dev.agentcraft.client.foreman.Protocol;
 import dev.agentcraft.client.foreman.Protocol.AgentSay;
 import dev.agentcraft.client.ui.Kit;
 import dev.agentcraft.client.ui.TextUtil;
+import dev.agentcraft.client.ui.Tr;
 import dev.agentcraft.client.ui.UiStyle;
 import dev.agentcraft.client.ui.WorldUi;
 import java.util.ArrayList;
@@ -163,7 +164,7 @@ public final class SpeechBubble {
 		}
 		if (to.equals("user")) {
 			var p = Minecraft.getInstance().player;
-			return "@" + (p != null ? p.getGameProfile().name() : "you");
+			return "@" + (p != null ? p.getGameProfile().name() : Tr.t("agents.you"));
 		}
 		ForemanState st = Foreman.state();
 		Protocol.Agent a = st == null ? null : st.agent(to);

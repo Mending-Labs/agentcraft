@@ -22,6 +22,7 @@ import dev.agentcraft.client.permissions.PermissionBody;
 import dev.agentcraft.client.ui.Kit;
 import dev.agentcraft.client.ui.Panels;
 import dev.agentcraft.client.ui.TextUtil;
+import dev.agentcraft.client.ui.Tr;
 import dev.agentcraft.client.ui.UiStyle;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -129,7 +130,7 @@ public class DecisionScreen extends Screen {
 	private @Nullable Decision preview;
 
 	public DecisionScreen(@Nullable String decisionId, @Nullable Screen parent) {
-		super(Component.literal("Decisions"));
+		super(Component.translatable("agentcraft.decisions.title"));
 		this.currentId = decisionId;
 		this.parent = parent;
 	}
@@ -248,8 +249,10 @@ public class DecisionScreen extends Screen {
 					if (!d.id().equals(elsewhereId)) {
 						elsewhereId = d.id();
 						elsewhereUntil = now + ELSEWHERE_MS;
-						String how = d.status() == Protocol.DecisionStatus.CANCELLED ? "was withdrawn"
-							: "answered elsewhere" + (d.answer() != null && d.answer().option() != null ? ": " + d.answer().option() : "");
+						String how = d.status() == Protocol.DecisionStatus.CANCELLED ? Tr.t("decisions.was_withdrawn")
+							: d.answer() != null && d.answer().option() != null
+								? Tr.t("decisions.answered_elsewhere_with", DecisionQueue.optionLabel(d.kind(), d.answer().option()))
+								: Tr.t("decisions.answered_elsewhere");
 						last = new Sent(d.id(), how, now, false, null, true);
 						focusText(false);
 					}
@@ -264,7 +267,7 @@ public class DecisionScreen extends Screen {
 			if (currentId != null && currentId.equals(elsewhereId) && !closeWhenEmpty) {
 				// the last one was answered somewhere else: done here too
 				closeWhenEmpty = true;
-				setStatus("All caught up " + UiBits.CHECK, false);
+				setStatus(Tr.t("decisions.all_caught_up", UiBits.CHECK), false);
 			}
 			currentId = null;
 			return null;
@@ -397,9 +400,10 @@ public class DecisionScreen extends Screen {
 
 	private String labelOf(Decision d, @Nullable String option) {
 		if (option == null) {
-			return "your answer";
+			return Tr.t("decisions.your_answer");
 		}
-		return d.kind() == DecisionKind.PERMISSION ? PermissionBody.buttonLabel(option) : option;
+		// display only: the option itself is what goes to the Foreman
+		return DecisionQueue.optionLabel(d.kind(), option);
 	}
 
 	/** "Merge" -> "merge" for the footer hint, but the agent's own words keep their case ("CLI", "JSON"). */
@@ -412,18 +416,18 @@ public class DecisionScreen extends Screen {
 
 	private void choose(Decision d, String option) {
 		if (preview != null) {
-			setStatus("Preview: \"" + labelOf(d, option) + "\" was not sent", false);
+			setStatus(Tr.t("decisions.preview_option_not_sent", labelOf(d, option)), false);
 			return;
 		}
 		if (sending.containsKey(d.id()) || !d.isOpen()) {
 			return;
 		}
 		if (!armed()) {
-			setStatus("A new decision just came up: press again to answer it", false);
+			setStatus(Tr.t("decisions.new_decision_press_again"), false);
 			return;
 		}
 		if (Foreman.state().isStale()) {
-			setStatus("Foreman offline: answers are disabled until it reconnects", true);
+			setStatus(Tr.t("decisions.offline_answers_disabled"), true);
 			return;
 		}
 		// only a press that counts moves the highlight (a dropped early press must not arm Enter)
@@ -432,18 +436,18 @@ public class DecisionScreen extends Screen {
 			if (!requestChanges) {
 				requestChanges = true;
 				focusText(true);
-				setStatus("Say what should change, then Enter", false);
+				setStatus(Tr.t("decisions.say_what_should_change"), false);
 				return;
 			}
 			if (answer.value().isBlank()) {
-				setStatus("Type the feedback for the worker first", true);
+				setStatus(Tr.t("decisions.type_feedback_first"), true);
 				focusText(true);
 				return;
 			}
 		}
 		if (d.kind() == DecisionKind.MERGE && option.equals(Protocol.REJECT) && Util.getMillis() > confirmRejectUntil) {
 			confirmRejectUntil = Util.getMillis() + 3000;
-			setStatus("Reject abandons the branch: press " + (d.options().indexOf(option) + 1) + " again", true);
+			setStatus(Tr.t("decisions.reject_press_again", d.options().indexOf(option) + 1), true);
 			return;
 		}
 		String text = answer.value().isBlank() ? null : answer.value().strip();
@@ -460,18 +464,18 @@ public class DecisionScreen extends Screen {
 			return;
 		}
 		if (preview != null) {
-			setStatus("Preview: your answer was not sent", false);
+			setStatus(Tr.t("decisions.preview_answer_not_sent"), false);
 			return;
 		}
 		if (text.isEmpty()) {
-			setStatus("Type an answer, or pick an option (1-" + Math.max(1, d.options().size()) + ")", true);
+			setStatus(Tr.t("decisions.type_answer_or_pick", Math.max(1, d.options().size())), true);
 			return;
 		}
 		if (!armed() || sending.containsKey(d.id()) || !d.isOpen()) {
 			return;
 		}
 		if (Foreman.state().isStale()) {
-			setStatus("Foreman offline: answers are disabled until it reconnects", true);
+			setStatus(Tr.t("decisions.offline_answers_disabled"), true);
 			return;
 		}
 		send(d, null, text);
@@ -508,7 +512,7 @@ public class DecisionScreen extends Screen {
 					} else {
 						currentId = null;
 						closeWhenEmpty = true;
-						setStatus("All caught up " + UiBits.CHECK, false);
+						setStatus(Tr.t("decisions.all_caught_up", UiBits.CHECK), false);
 					}
 				}
 				return;
@@ -520,12 +524,12 @@ public class DecisionScreen extends Screen {
 				Throwable c = err instanceof CompletionException && err.getCause() != null ? err.getCause() : err;
 				msg = c.getMessage() != null ? c.getMessage() : c.getClass().getSimpleName();
 			} else {
-				msg = ack == null ? "no answer from the Foreman" : ack.error() != null ? ack.error() : "the Foreman refused the answer";
+				msg = ack == null ? Tr.t("decisions.no_answer_from_foreman") : ack.error() != null ? ack.error() : Tr.t("decisions.foreman_refused");
 			}
 			last = new Sent(id, label, t, false, msg, false);
 			if (minecraft != null && minecraft.gui.screen() != this) {
 				// closed meanwhile: don't let the refusal go unnoticed
-				Toasts.push(new Notify(NotifyLevel.WARN, "Your answer to " + id + " was not sent: " + msg, id, System.currentTimeMillis()));
+				Toasts.push(new Notify(NotifyLevel.WARN, Tr.t("decisions.toast_not_sent", id, msg), id, System.currentTimeMillis()));
 			}
 			// bring it back, with what was typed
 			switchTo(id, false);
@@ -534,7 +538,7 @@ public class DecisionScreen extends Screen {
 				requestChanges = wasRequestChanges;
 				focusText(true);
 			}
-			setStatus(id + " was not sent: " + msg, true);
+			setStatus(Tr.t("decisions.status_not_sent", id, msg), true);
 		});
 	}
 
@@ -623,7 +627,7 @@ public class DecisionScreen extends Screen {
 			if (digit <= n) {
 				choose(d, d.options().get(digit - 1));
 			} else {
-				setStatus("No option " + digit, true);
+				setStatus(Tr.t("decisions.no_option", digit), true);
 			}
 			return true;
 		}
@@ -634,7 +638,7 @@ public class DecisionScreen extends Screen {
 			if (n == 0) {
 				focusText(true);
 			} else if (highlight < 0) {
-				setStatus("Pick one with " + (n == 1 ? "1" : "1-" + n) + " (or the arrows, then Enter)", false);
+				setStatus(Tr.t("decisions.pick_one_with", n == 1 ? "1" : "1-" + n), false);
 			} else {
 				choose(d, d.options().get(Math.min(highlight, n - 1)));
 			}
@@ -764,11 +768,11 @@ public class DecisionScreen extends Screen {
 
 	private void reviewDiff(Decision d) {
 		if (d.repoId() == null || d.worktree() == null) {
-			setStatus("This merge has no worktree to diff", true);
+			setStatus(Tr.t("decisions.merge_no_worktree"), true);
 			return;
 		}
 		if (!DiffLink.open(d.repoId(), d.worktree(), d, this)) {
-			setStatus("The file list above is the diff summary (no diff screen in this build)", false);
+			setStatus(Tr.t("decisions.no_diff_screen"), false);
 		}
 	}
 
@@ -789,8 +793,8 @@ public class DecisionScreen extends Screen {
 	}
 
 	private TextFieldView.Style fieldStyle(Decision d) {
-		String ph = requestChanges ? "What should change? (Enter sends it to the worker)" : d.options().isEmpty() ? "Type your answer… (Enter sends)"
-			: "Or type your own answer…";
+		String ph = requestChanges ? Tr.t("decisions.placeholder_feedback") : d.options().isEmpty() ? Tr.t("decisions.placeholder_answer")
+			: Tr.t("decisions.placeholder_own_answer");
 		return new TextFieldView.Style(null, 0, ph, null, null, 0, 4);
 	}
 
@@ -865,9 +869,9 @@ public class DecisionScreen extends Screen {
 
 		// header: kind icon + title, queue position on the right
 		String title = switch (d.kind()) {
-			case PERMISSION -> "Permission needed";
-			case MERGE -> "Merge review";
-			default -> "Decision needed";
+			case PERMISSION -> Tr.t("decisions.title_permission");
+			case MERGE -> Tr.t("decisions.title_merge");
+			default -> Tr.t("decisions.title_decision");
 		};
 		Panels.sprite(g, Kit.HEADER, x - 2, y - 2, cw + 4, 16);
 		Panels.sprite(g, Kit.icon(d.kind() == DecisionKind.MERGE ? "merge" : d.kind() == DecisionKind.PERMISSION ? "bash" : "decision"), x + 2, y - 1, 12,
@@ -879,14 +883,14 @@ public class DecisionScreen extends Screen {
 		navY = y - 1;
 		if (preview != null) {
 			// a sample, not a real request: say so where the queue position would be
-			String tag = "preview";
+			String tag = Tr.t("decisions.preview_tag");
 			int tw = font.width(tag) + 10;
 			Panels.sprite(g, Kit.PILL, x + cw - tw, navY, tw, 11);
 			g.text(font, tag, x + cw - tw + 5, navY + 2, UiBits.muted(), false);
 			prevX0 = nextX0 = -100;
 		} else if (qn > 1 || qi < 0 && qn > 0) {
 			// position in the queue; "2 left" while a decision that left the queue is still on screen
-			String pos = qi < 0 ? qn + " left" : (qi + 1) + "/" + qn;
+			String pos = qi < 0 ? Tr.t("decisions.queue_left", qn) : (qi + 1) + "/" + qn;
 			int pwid = font.width(pos) + 10;
 			nextX0 = x + cw - 12;
 			Panels.sprite(g, Kit.KEYCAP, nextX0, navY, 12, 12);
@@ -912,8 +916,8 @@ public class DecisionScreen extends Screen {
 		int room = cw - (ax - x);
 		if (d.kind() == DecisionKind.MERGE && wt != null && !wt.agentId().equals(d.agentId())) {
 			String worker = UiBits.agentName(wt.agentId());
-			String pre = " asks you to merge ";
-			String post = "'s work";
+			String pre = Tr.t("decisions.asks_merge_work_pre");
+			String post = Tr.t("decisions.asks_merge_work_post");
 			if (font.width(pre + worker + post) <= room) {
 				g.text(font, pre, ax, y + 1, UiBits.ink(), false);
 				ax += font.width(pre);
@@ -921,21 +925,21 @@ public class DecisionScreen extends Screen {
 				ax += font.width(worker);
 				g.text(font, post, ax, y + 1, UiBits.ink(), false);
 			} else {
-				g.text(font, TextUtil.ellipsize(font, " asks you to review a merge", room), ax, y + 1, UiBits.ink(), false);
+				g.text(font, TextUtil.ellipsize(font, Tr.t("decisions.asks_review_merge"), room), ax, y + 1, UiBits.ink(), false);
 			}
 		} else {
 			String verb = switch (d.kind()) {
-				case PERMISSION -> " wants your permission";
-				case MERGE -> " asks you to review a merge";
-				default -> " asks you";
+				case PERMISSION -> Tr.t("decisions.wants_permission");
+				case MERGE -> Tr.t("decisions.asks_review_merge");
+				default -> Tr.t("decisions.asks_you");
 			};
 			g.text(font, TextUtil.ellipsize(font, verb, room), ax, y + 1, UiBits.ink(), false);
 		}
 		// when it was asked and for which task (the title only when the question doesn't already say it)
-		StringBuilder sub = new StringBuilder("asked ").append(UiBits.ago(d.createdAt()));
+		StringBuilder sub = new StringBuilder(Tr.t("decisions.asked_ago", UiBits.ago(d.createdAt())));
 		Task t = d.taskId() == null ? null : s.task(d.taskId());
 		if (t != null) {
-			sub.append(" · task ").append(t.id());
+			sub.append(Tr.t("decisions.task_ref", t.id()));
 			String tt = UiBits.oneLine(t.title());
 			if (!tt.isEmpty() && !d.question().contains(tt)) {
 				sub.append(' ').append(tt);
@@ -993,13 +997,13 @@ public class DecisionScreen extends Screen {
 		Kit.Padding p = Kit.padding("panel_paper");
 		boolean stale = Foreman.state() == null || Foreman.state().isStale();
 		boolean caughtUp = status != null && !statusError;
-		String head = caughtUp ? status : stale ? "Foreman offline" : "No decisions waiting";
+		String head = caughtUp ? status : stale ? Tr.t("decisions.foreman_offline") : Tr.t("decisions.none_waiting");
 		String sub;
 		Sent l = last;
 		if (caughtUp && l != null && !l.pending() && l.error() == null && !l.elsewhere()) {
-			sub = "last: " + l.id() + " → " + l.label();
+			sub = Tr.t("decisions.last_answer", l.id(), l.label());
 		} else {
-			sub = stale ? "decisions show up again once it reconnects" : "your team will ask when they need you";
+			sub = stale ? Tr.t("decisions.empty_offline_hint") : Tr.t("decisions.empty_hint");
 		}
 		// sized to what it says
 		int w = Math.min(width - 24, Math.max(180, Math.max(12 + font.width(head), font.width(sub)) + p.left() + p.right() + 4));
@@ -1010,7 +1014,7 @@ public class DecisionScreen extends Screen {
 		Panels.dot(g, stale && !caughtUp ? "idle" : "done", x + p.left(), y + p.top() + 1, false);
 		g.text(font, head, x + p.left() + 12, y + p.top(), UiBits.ink(), false);
 		g.text(font, TextUtil.ellipsize(font, sub, w - p.left() - p.right()), x + p.left(), y + p.top() + 14, UiBits.muted(), false);
-		UiBits.hints(g, font, x + p.left(), y + h - p.bottom() - 13, false, "Esc", "close");
+		UiBits.hints(g, font, x + p.left(), y + h - p.bottom() - 13, false, Tr.t("decisions.key_esc"), Tr.t("decisions.hint_close"));
 	}
 
 	private void drawFooter(GuiGraphicsExtractor g, Decision d, int x, int y, int w, List<Decision> queue, int qi, long now) {
@@ -1023,18 +1027,18 @@ public class DecisionScreen extends Screen {
 			color = statusError ? UiBits.errorText() : UiBits.muted();
 		} else if (l != null && l.error() == null && (l.pending() || now - l.at() < LAST_MS)) {
 			if (l.pending()) {
-				st = "Sending " + l.id() + ": " + l.label() + "…";
+				st = Tr.t("decisions.footer_sending", l.id(), l.label());
 			} else {
-				st = UiBits.CHECK + " " + l.id() + (l.elsewhere() ? " " : ": ") + l.label();
+				st = UiBits.CHECK + " " + (l.elsewhere() ? l.id() + " " + l.label() : Tr.t("decisions.footer_sent", l.id(), l.label()));
 				color = UiBits.okText();
 			}
 		} else if (preview == null && Foreman.state().isStale()) {
-			st = "Foreman offline: read-only";
+			st = Tr.t("decisions.offline_read_only");
 			color = UiBits.errorText();
 		} else if (queue.size() > 1 && preview == null) {
 			Decision next = queue.get(((qi < 0 ? -1 : qi) + 1) % queue.size());
 			if (!next.id().equals(d.id())) {
-				st = "next: " + UiBits.agentName(next.agentId()) + " · " + DecisionQueue.kindLabel(next.kind());
+				st = Tr.t("decisions.footer_next", UiBits.agentName(next.agentId()), DecisionQueue.kindLabel(next.kind()));
 			}
 		}
 		int stW = st == null ? 0 : Math.min(font.width(st), w - 50);
@@ -1042,23 +1046,23 @@ public class DecisionScreen extends Screen {
 		// key hints as (key, verb, priority); the least important go first when room is short
 		List<String[]> hints = new ArrayList<>();
 		if (textFocused) {
-			hints.add(new String[] {"Enter", requestChanges ? "send feedback" : "send", "5"});
-			hints.add(new String[] {"Esc", requestChanges ? "back" : "stop typing", "4"});
+			hints.add(new String[] {Tr.t("decisions.key_enter"), requestChanges ? Tr.t("decisions.hint_send_feedback") : Tr.t("decisions.hint_send"), "5"});
+			hints.add(new String[] {Tr.t("decisions.key_esc"), requestChanges ? Tr.t("decisions.hint_back") : Tr.t("decisions.hint_stop_typing"), "4"});
 		} else {
 			int n = d.options().size();
 			if (n > 0 && !readOnlyNow(d)) {
-				hints.add(new String[] {n == 1 ? "1" : "1-" + n, "choose", "5"});
+				hints.add(new String[] {n == 1 ? "1" : "1-" + n, Tr.t("decisions.hint_choose"), "5"});
 			}
 			if (highlight >= 0 && highlight < n && !readOnlyNow(d)) {
-				hints.add(new String[] {"Enter", decap(labelOf(d, d.options().get(highlight))), "4"});
+				hints.add(new String[] {Tr.t("decisions.key_enter"), decap(labelOf(d, d.options().get(highlight))), "4"});
 			}
 			if (d.kind() == DecisionKind.MERGE) {
-				hints.add(new String[] {"D", "diff", "2"});
+				hints.add(new String[] {"D", Tr.t("decisions.hint_diff"), "2"});
 			}
 			if (queue.size() > 1 && preview == null) {
-				hints.add(new String[] {"Tab", "next", "1"});
+				hints.add(new String[] {"Tab", Tr.t("decisions.hint_next"), "1"});
 			}
-			hints.add(new String[] {"Esc", "later", "3"});
+			hints.add(new String[] {Tr.t("decisions.key_esc"), Tr.t("decisions.hint_later"), "3"});
 		}
 		// the status wins the room: drop the least important hints until both fit
 		int room = w - (stW > 0 ? stW + 12 : 0);
@@ -1102,18 +1106,20 @@ public class DecisionScreen extends Screen {
 		int row = 0;
 		long now = Util.getMillis();
 		if (d.kind() == DecisionKind.MERGE) {
-			int w = UiBits.buttonWidth(font, "Review diff", 0);
-			out.add(new Btn("", "Review diff", 0, 0, 0, w, false, false, Action.REVIEW_DIFF));
+			String review = Tr.t("decisions.review_diff");
+			int w = UiBits.buttonWidth(font, review, 0);
+			out.add(new Btn("", review, 0, 0, 0, w, false, false, Action.REVIEW_DIFF));
 			bx = w + 14;
 		}
 		for (int i = 0; i < d.options().size(); i++) {
+			// opt is what gets sent to the Foreman; label is only what the button shows
 			String opt = d.options().get(i);
-			String label = d.kind() == DecisionKind.PERMISSION ? PermissionBody.buttonLabel(opt) : opt;
+			String label = labelOf(d, opt);
 			if (opt.equals(Protocol.REQUEST_CHANGES) && requestChanges) {
-				label = "Send feedback";
+				label = Tr.t("decisions.send_feedback");
 			}
 			if (opt.equals(Protocol.REJECT) && now < confirmRejectUntil) {
-				label = "Confirm reject";
+				label = Tr.t("decisions.confirm_reject");
 			}
 			// sized for the label it shows now (Reject grows into "Confirm reject" only while confirming)
 			int w = Math.min(cw, UiBits.buttonWidth(font, label, i + 1));
@@ -1130,16 +1136,18 @@ public class DecisionScreen extends Screen {
 			bx += w + BTN_GAP;
 		}
 		if (d.options().isEmpty() && d.kind() == DecisionKind.QUESTION) {
-			int w = UiBits.buttonWidth(font, "Send answer", 0);
-			out.add(new Btn("", "Send answer", 0, 0, 0, w, true, false, Action.SEND_TEXT));
+			String sendAnswer = Tr.t("decisions.send_answer");
+			int w = UiBits.buttonWidth(font, sendAnswer, 0);
+			out.add(new Btn("", sendAnswer, 0, 0, 0, w, true, false, Action.SEND_TEXT));
 		}
 		if (requestChanges) {
-			int w = UiBits.buttonWidth(font, "Cancel", 0);
+			String cancel = Tr.t("decisions.cancel");
+			int w = UiBits.buttonWidth(font, cancel, 0);
 			if (bx > 0 && bx + w > cw) {
 				row++;
 				bx = 0;
 			}
-			out.add(new Btn("", "Cancel", 0, bx, row * 28, w, false, false, Action.CANCEL_TEXT));
+			out.add(new Btn("", cancel, 0, bx, row * 28, w, false, false, Action.CANCEL_TEXT));
 		}
 		return out;
 	}
@@ -1235,15 +1243,16 @@ public class DecisionScreen extends Screen {
 				List<Run> stat = new ArrayList<>();
 				String worker = UiBits.agentName(wt.agentId());
 				stat.add(new Run(worker, UiBits.nameOnLight(wt.agentId())));
-				stat.add(new Run("  ·  " + UiBits.plural(wt.files(), "file", "files") + "  ", ink));
+				stat.add(new Run("  ·  " + DiffLink.filesCount(wt.files()) + "  ", ink));
 				stat.add(new Run("+" + wt.additions(), addFg));
 				stat.add(new Run(" −" + wt.deletions(), delFg));
-				stat.add(new Run("  ·  " + UiBits.plural(wt.ahead(), "commit", "commits"), muted));
+				stat.add(new Run("  ·  " + Tr.t(wt.ahead() == 1 ? "decisions.commits_one" : "decisions.commits_many", wt.ahead()), muted));
+				// "tests: pass" / "tests: fail" are matched in the Foreman's context text (not translated)
 				String ctxl = d.context() == null ? "" : d.context().toLowerCase(Locale.ROOT);
 				if (ctxl.contains("tests: pass")) {
-					stat.add(new Run("  ·  tests pass", addFg));
+					stat.add(new Run("  ·  " + Tr.t("decisions.tests_pass"), addFg));
 				} else if (ctxl.contains("tests: fail")) {
-					stat.add(new Run("  ·  tests fail", UiBits.errorText()));
+					stat.add(new Run("  ·  " + Tr.t("decisions.tests_fail"), UiBits.errorText()));
 				}
 				rows.add(new Row(stat, 0, List.of(), UiBits.hasPortrait(wt.agentId()) ? wt.agentId() : null));
 			}
@@ -1264,7 +1273,7 @@ public class DecisionScreen extends Screen {
 					rows.add(new Row(List.of(new Run(TextUtil.ellipsize(font, pathPart, room), ink)), 0, right, null));
 				}
 			} else if (files != null && Foreman.connected()) {
-				rows.add(Row.of("  loading the file list…", muted));
+				rows.add(Row.of("  " + Tr.t("decisions.loading_file_list"), muted));
 			}
 		}
 		String ctx = d.context() == null ? "" : d.context().strip();

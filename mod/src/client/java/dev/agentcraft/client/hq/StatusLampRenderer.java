@@ -13,13 +13,13 @@ import dev.agentcraft.client.foreman.Protocol.Task;
 import dev.agentcraft.client.foreman.Protocol.TaskStatus;
 import dev.agentcraft.client.ui.Kit;
 import dev.agentcraft.client.ui.TextUtil;
+import dev.agentcraft.client.ui.Tr;
 import dev.agentcraft.client.ui.UiStyle;
 import dev.agentcraft.client.ui.WorldUi;
 import dev.agentcraft.client.world.StationRenderState;
 import dev.agentcraft.client.world.StationRenderer;
 import dev.agentcraft.layout.Anchors;
 import java.util.List;
-import java.util.Locale;
 import org.jspecify.annotations.Nullable;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
@@ -166,7 +166,14 @@ public class StatusLampRenderer extends StationRenderer<StatusLampBlockEntity, S
 			// (judges: a weighted "39%" next to "2 of 9 done" read as a contradiction)
 			s.progress = total > 0 ? done / (double) total : Math.max(0, Math.min(1, g.progress()));
 			s.percent = total > 0 ? done + "/" + total : Math.round(s.progress * 100) + "%";
-			s.statusWord = g.status().wire().toUpperCase(Locale.ROOT);
+			s.statusWord = switch (g.status()) {
+				case PLANNING -> Tr.t("hq.goal_status_planning");
+				case ACTIVE -> Tr.t("hq.goal_status_active");
+				case DONE -> Tr.t("hq.goal_status_done");
+				case FAILED -> Tr.t("hq.goal_status_failed");
+				case CANCELLED -> Tr.t("hq.goal_status_cancelled");
+				default -> Tr.t("hq.goal_status_unknown");
+			};
 			String fam = switch (g.status()) {
 				case PLANNING -> "thinking";
 				case ACTIVE -> "working";
@@ -181,32 +188,32 @@ public class StatusLampRenderer extends StationRenderer<StatusLampBlockEntity, S
 				lines = List.of(lines.get(0), lines.get(1), TextUtil.ellipsize(font, String.join(" ", lines.subList(2, lines.size())), TEXT_W));
 			}
 			s.goalLines = List.copyOf(lines);
-			s.line1 = done + " of " + total + " tasks done" + (doing > 0 ? "  ·  " + doing + " in progress" : "");
-			s.line2a = plural(working, "agent") + " working" + (review > 0 ? "  ·  " + review + " in review" : "");
-			s.line2b = waitingUser > 0 ? "  ·  " + waitingUser + " need" + (waitingUser == 1 ? "s" : "") + " you" : "";
+			s.line1 = Tr.t("hq.tasks_done", done, total) + (doing > 0 ? "  ·  " + Tr.t("hq.in_progress", doing) : "");
+			s.line2a = (working == 1 ? Tr.t("hq.agents_working_one", working) : Tr.t("hq.agents_working_many", working))
+				+ (review > 0 ? "  ·  " + Tr.t("hq.in_review", review) : "");
+			s.line2b = waitingUser > 0 ? "  ·  " + (waitingUser == 1 ? Tr.t("hq.need_you_one", waitingUser) : Tr.t("hq.need_you_many", waitingUser)) : "";
 		} else {
 			s.progress = 0;
 			s.percent = "–";
-			s.statusWord = "NO GOAL";
+			s.statusWord = Tr.t("hq.no_goal");
 			s.statusColor = UiStyle.status("idle");
-			s.goalLines = List.of("What should the team", "work on?");
-			s.line1 = "Press ` and type a goal";
-			s.line2a = st == null || !st.hasData() ? "Foreman not connected" : plural(onShift, "agent") + " on shift";
+			s.goalLines = List.of(Tr.t("hq.no_goal_line1"), Tr.t("hq.no_goal_line2"));
+			s.line1 = Tr.t("hq.press_to_type_goal");
+			s.line2a = st == null || !st.hasData() ? Tr.t("hq.foreman_not_connected")
+				: onShift == 1 ? Tr.t("hq.agents_on_shift_one", onShift) : Tr.t("hq.agents_on_shift_many", onShift);
 			s.line2b = "";
 		}
 		if (s.stale && st != null && st.hasData()) {
-			s.line2a = "Foreman offline · last known state";
+			s.line2a = Tr.t("hq.foreman_offline_last_state");
 			s.line2b = "";
 		}
 		int w = Math.max(font.width(s.line1), font.width(s.line2a) + font.width(s.line2b));
+		// the heading ("GOAL ACTIVE") is longer in some languages
+		w = Math.max(w, font.width(Tr.t("hq.goal_label")) + 6 + font.width(s.statusWord));
 		for (String l : s.goalLines) {
 			w = Math.max(w, font.width(l));
 		}
 		s.cardW = Math.max(CARD_W, 84 + w + 12);
-	}
-
-	static String plural(int n, String word) {
-		return n + " " + word + (n == 1 ? "" : "s");
 	}
 
 	@Override
@@ -435,7 +442,7 @@ public class StatusLampRenderer extends StationRenderer<StatusLampBlockEntity, S
 		int pw = font.width(s.percent);
 		WorldUi.submitText(poseStack, collector, s.percent, rx + 32 - pw / 2f, ry + 23, UiStyle.withAlpha(ink, dim), light);
 		if (s.hasGoal) {
-			String cap = "tasks";
+			String cap = Tr.t("hq.tasks_caption");
 			poseStack.pushPose();
 			poseStack.translate(rx + 32, ry + 34, 0f);
 			poseStack.scale(0.75f, 0.75f, 1f);
@@ -445,8 +452,9 @@ public class StatusLampRenderer extends StationRenderer<StatusLampBlockEntity, S
 		// text column
 		float tx = x0 + 86;
 		float ty = y0 + 9;
-		WorldUi.submitText(poseStack, collector, "GOAL", tx, ty, UiStyle.withAlpha(UiStyle.CLAY_DARK, dim), light);
-		WorldUi.submitText(poseStack, collector, s.statusWord, tx + font.width("GOAL") + 6, ty, UiStyle.withAlpha(s.statusColor, dim), light);
+		String goalLabel = Tr.t("hq.goal_label");
+		WorldUi.submitText(poseStack, collector, goalLabel, tx, ty, UiStyle.withAlpha(UiStyle.CLAY_DARK, dim), light);
+		WorldUi.submitText(poseStack, collector, s.statusWord, tx + font.width(goalLabel) + 6, ty, UiStyle.withAlpha(s.statusColor, dim), light);
 		float ly = ty + 13;
 		for (String line : s.goalLines) {
 			WorldUi.submitText(poseStack, collector, line, tx, ly, UiStyle.withAlpha(ink, dim), light);

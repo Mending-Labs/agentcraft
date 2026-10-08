@@ -11,6 +11,7 @@ import dev.agentcraft.client.monitor.DisplayDraw;
 import dev.agentcraft.client.monitor.DisplayStats;
 import dev.agentcraft.client.monitor.DisplayText;
 import dev.agentcraft.client.ui.Kit;
+import dev.agentcraft.client.ui.Tr;
 import dev.agentcraft.client.ui.UiStyle;
 import dev.agentcraft.client.ui.WorldUi;
 import dev.agentcraft.client.world.StationRenderState;
@@ -220,7 +221,7 @@ public class TaskBoardRenderer extends StationRenderer<TaskBoardBlockEntity, Tas
 			drawEmpty(ps, c, b, light);
 		}
 		if (s.stale || s.noData) {
-			drawOffline(ps, c, b, light, s.noData ? s.noDataText : DisplayText.OFFLINE, s.noData);
+			drawOffline(ps, c, b, light, s.noData ? s.noDataText : DisplayText.offline(), s.noData);
 		}
 		ps.popPose();
 		DisplayStats.add(DisplayStats.Kind.BOARD, System.nanoTime() - t0);
@@ -229,10 +230,11 @@ public class TaskBoardRenderer extends StationRenderer<TaskBoardBlockEntity, Tas
 	/** No tasks yet: a paper note pinned in the middle that says how to start, with the console key as a keycap. */
 	private static void drawEmpty(PoseStack ps, SubmitNodeCollector c, TaskBoard b, int light) {
 		Font font = Minecraft.getInstance().font;
-		String l1 = "No tasks yet";
+		String l1 = Tr.t("taskwall.empty_title");
 		String key = TaskWallFeature.startKey();
-		String pre = key.isEmpty() ? "Open the console, type a goal" : "Press ";
-		String post = key.isEmpty() ? "" : " and type a goal";
+		// the console key is drawn as a keycap between "pre" and "post"
+		String pre = key.isEmpty() ? Tr.t("taskwall.empty_open_console") : Tr.t("taskwall.empty_press_before");
+		String post = key.isEmpty() ? "" : Tr.t("taskwall.empty_press_after");
 		float kw = key.isEmpty() ? 0 : font.width(key) + 8;
 		float w2 = font.width(pre) + kw + font.width(post);
 		float w = Math.max(font.width(l1), w2) + 18, h = 33;

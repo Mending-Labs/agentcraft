@@ -5,6 +5,7 @@ import com.google.gson.JsonObject;
 import com.mojang.blaze3d.platform.InputConstants;
 import dev.agentcraft.client.diff.DiffDoc.FileInfo;
 import dev.agentcraft.client.diff.DiffDoc.Row;
+import dev.agentcraft.client.decisions.DecisionQueue;
 import dev.agentcraft.client.diff.ReviewKit.ButtonKind;
 import dev.agentcraft.client.foreman.Foreman;
 import dev.agentcraft.client.foreman.ForemanState;
@@ -17,6 +18,7 @@ import dev.agentcraft.client.foreman.Protocol.Worktree;
 import dev.agentcraft.client.ui.Kit;
 import dev.agentcraft.client.ui.Panels;
 import dev.agentcraft.client.ui.TextUtil;
+import dev.agentcraft.client.ui.Tr;
 import dev.agentcraft.client.ui.UiStyle;
 import java.util.ArrayList;
 import java.util.List;
@@ -132,7 +134,7 @@ public final class DiffScreen extends Screen {
 	private int barY;
 
 	public DiffScreen(Target target) {
-		super(Component.literal("Diff review"));
+		super(Component.translatable("agentcraft.diff.title"));
 		this.target = target;
 	}
 
@@ -226,7 +228,7 @@ public final class DiffScreen extends Screen {
 		}
 		if (!Foreman.connected()) {
 			load = Load.ERROR;
-			error = "The Foreman is not connected (retrying when it is back).";
+			error = Tr.t("diff.foreman_not_connected");
 			retryOnLink = true;
 			return;
 		}
@@ -458,7 +460,7 @@ public final class DiffScreen extends Screen {
 		// title strip
 		Panels.sprite(g, Kit.HEADER, ix, iy, iw, 14);
 		Panels.sprite(g, Kit.icon(d != null ? "merge" : "git"), ix + 4, iy + 1, 12, 12);
-		String kind = d != null ? "Merge review" : "Worktree diff";
+		String kind = d != null ? Tr.t("diff.merge_review") : Tr.t("diff.worktree_diff");
 		int tx = ix + 20;
 		ReviewKit.bold(g, font, kind, tx, iy + 3, ink);
 		tx += ReviewKit.boldWidth(font, kind) + 6;
@@ -470,14 +472,16 @@ public final class DiffScreen extends Screen {
 			stateText = target.worktree() == null ? "" : target.worktree();
 			fam = null;
 		} else if (d.isOpen()) {
-			stateText = "Waiting for you";
+			stateText = Tr.t("diff.waiting_for_you");
 			fam = "waiting";
 		} else if (d.status() == Protocol.DecisionStatus.CANCELLED) {
-			stateText = "Cancelled";
+			stateText = Tr.t("diff.cancelled");
 			fam = "idle";
 		} else {
-			String opt = d.answer() != null && d.answer().option() != null ? d.answer().option() : "Answered";
-			stateText = opt + (d.answer() != null ? " · " + ReviewKit.ago(d.answer().ts()) : "");
+			// the raw option picks the dot; only its label is translated
+			String opt = d.answer() != null ? d.answer().option() : null;
+			String label = opt != null ? DecisionQueue.optionLabel(d.kind(), opt) : Tr.t("diff.answered");
+			stateText = label + (d.answer() != null ? " · " + ReviewKit.ago(d.answer().ts()) : "");
 			fam = answerFamily(opt);
 		}
 		// "1 of 2" when more decisions wait (the raw id "d3" meant nothing to a reader)
@@ -487,7 +491,7 @@ public final class DiffScreen extends Screen {
 			List<Protocol.Decision> open = fsIdx.openDecisions();
 			int at = open.indexOf(d);
 			if (open.size() > 1 && at >= 0) {
-				idText = (at + 1) + " of " + open.size();
+				idText = Tr.t("diff.position_of", at + 1, open.size());
 			}
 		}
 		if (!idText.isEmpty()) {
@@ -535,14 +539,14 @@ public final class DiffScreen extends Screen {
 		drawStat(g, right - statW, my0 + 11);
 		int rightMin = right - Math.max(ciW, statW) - 10;
 		// line 1
-		String name = who == null ? "Unknown" : ReviewKit.agentName(who);
+		String name = who == null ? Tr.t("diff.unknown") : ReviewKit.agentName(who);
 		ReviewKit.bold(g, font, name, x, my0 + 1, ReviewKit.agentInk(who));
 		x += ReviewKit.boldWidth(font, name) + 4;
 		String branch = w != null ? w.branch() : diff != null && diff.branch() != null ? diff.branch() : null;
 		String base = w != null ? w.base() : diff != null && diff.base() != null ? diff.base() : repo() != null ? repo().branch() : null;
 		if (branch != null) {
-			String verb = d == null ? "" : d.isOpen() ? "wants to merge" : "asked to merge";
-			String into = d == null ? "→" : "into";
+			String verb = d == null ? "" : d.isOpen() ? Tr.t("diff.wants_to_merge") : Tr.t("diff.asked_to_merge");
+			String into = d == null ? "→" : Tr.t("diff.into");
 			boolean verbFits = !verb.isEmpty() && x + font.width(verb) + 60 < rightMin;
 			if (verbFits) {
 				g.text(font, verb, x, my0 + 1, muted, false);
@@ -561,21 +565,22 @@ public final class DiffScreen extends Screen {
 		// line 2
 		StringBuilder sub = new StringBuilder();
 		if (d != null) {
-			sub.append("asked by ").append(ReviewKit.agentName(d.agentId())).append(" · ").append(ReviewKit.ago(d.createdAt()));
+			sub.append(Tr.t("diff.asked_by", ReviewKit.agentName(d.agentId()), ReviewKit.ago(d.createdAt())));
 		} else if (w != null) {
-			sub.append(w.ahead()).append(w.ahead() == 1 ? " commit" : " commits").append(" ahead · ").append(w.status().wire());
+			sub.append(Tr.t(w.ahead() == 1 ? "diff.commits_ahead_one" : "diff.commits_ahead_many", w.ahead())).append(" · ").append(worktreeStatusLabel(w
+				.status()));
 		}
 		if (target.worktree() != null && d == null) {
 			sub.append(sub.isEmpty() ? "" : " · ").append(target.worktree());
 		}
 		g.text(font, TextUtil.ellipsize(font, sub.toString(), rightMin - (ix + 25)), ix + 25, my0 + 12, muted, false);
 		if (outdated()) {
-			String u = "Updated  F5";
+			String u = Tr.t("diff.updated_f5");
 			int uw = ReviewKit.pillWidth(font, u);
 			int ux = rightMin - uw - 2;
 			if (ux > ix + 25 + font.width(sub.toString()) + 6) {
 				ReviewKit.pill(g, font, u, ux, my0 + 10, UiStyle.color("paper.link"));
-				buttons.add(new Btn("refresh", ux, my0 + 10, uw, 11, true, "The agent changed the worktree: reload the diff"));
+				buttons.add(new Btn("refresh", ux, my0 + 10, uw, 11, true, Tr.t("diff.updated_tip")));
 			}
 		}
 		String refused = refusedReason();
@@ -586,13 +591,23 @@ public final class DiffScreen extends Screen {
 		}
 	}
 
+	/** Display label of a worktree status (the wire value itself is not shown). */
+	private static String worktreeStatusLabel(Protocol.WorktreeStatus s) {
+		return switch (s) {
+			case ACTIVE -> Tr.t("diff.worktree_active");
+			case MERGED -> Tr.t("diff.worktree_merged");
+			case ABANDONED -> Tr.t("diff.worktree_abandoned");
+			default -> Tr.t("diff.worktree_unknown");
+		};
+	}
+
 	private String statText() {
 		if (diff != null) {
 			Protocol.DiffStats s = diff.stats();
-			return s.files() + (s.files() == 1 ? " file" : " files");
+			return ReviewKit.filesCount(s.files());
 		}
 		Worktree w = worktreeInfo();
-		return w == null ? "" : w.files() + (w.files() == 1 ? " file" : " files");
+		return w == null ? "" : ReviewKit.filesCount(w.files());
 	}
 
 	private int[] statNumbers() {
@@ -645,9 +660,10 @@ public final class DiffScreen extends Screen {
 	private void drawSidebar(GuiGraphicsExtractor g, int mx, int my) {
 		int muted = ReviewKit.muted();
 		int n = doc == null ? 0 : doc.files.size();
-		g.text(font, "FILES", sideX + 2, bodyY + 2, muted, false);
+		String filesHead = Tr.t("diff.files_heading");
+		g.text(font, filesHead, sideX + 2, bodyY + 2, muted, false);
 		if (n > 0) {
-			g.text(font, String.valueOf(n), sideX + 4 + font.width("FILES") + 4, bodyY + 2, ReviewKit.ink(), false);
+			g.text(font, String.valueOf(n), sideX + 4 + font.width(filesHead) + 4, bodyY + 2, ReviewKit.ink(), false);
 		}
 		int ly = sideListY();
 		int lh = sideListH();
@@ -673,7 +689,7 @@ public final class DiffScreen extends Screen {
 				int nameX = bx + bw + 4;
 				int cx;
 				if (f.file.binary() || f.file.additions() + f.file.deletions() == 0) {
-					String tag = f.file.binary() ? "binary" : f.file.status() == Protocol.DiffFileStatus.RENAMED ? "moved" : "";
+					String tag = f.file.binary() ? Tr.t("diff.tag_binary") : f.file.status() == Protocol.DiffFileStatus.RENAMED ? Tr.t("diff.tag_moved") : "";
 					cx = sideX + sideW - 4 - font.width(tag);
 					g.text(font, tag, cx, y + 3, muted, false);
 				} else {
@@ -686,11 +702,12 @@ public final class DiffScreen extends Screen {
 				}
 				g.text(font, TextUtil.ellipsize(font, f.base, cx - nameX - 3), nameX, y + 3, ReviewKit.ink(), false);
 				int dx = nameX;
-				String dir = f.dir.isEmpty() ? "(repo root)" : f.dir;
+				String dir = f.dir.isEmpty() ? Tr.t("diff.repo_root") : f.dir;
 				if (f.file.status() == Protocol.DiffFileStatus.RENAMED && f.file.oldPath() != null) {
 					// "was <old path>" (the old path ellipsized from the left, the label kept)
-					g.text(font, "was", dx, y + 12, UiStyle.color("paper.hunk"), false);
-					dx += font.width("was") + 4;
+					String was = Tr.t("diff.renamed_was");
+					g.text(font, was, dx, y + 12, UiStyle.color("paper.hunk"), false);
+					dx += font.width(was) + 4;
 					dir = f.file.oldPath();
 				}
 				g.text(font, ReviewKit.ellipsizeLeft(font, dir, sideX + sideW - 4 - dx), dx, y + 12, muted, false);
@@ -701,7 +718,7 @@ public final class DiffScreen extends Screen {
 				scrollbar(g, sideX + sideW - 4, ly, lh, content, lh, sideScroll, false, 4);
 			}
 		} else if (load == Load.LOADING) {
-			g.text(font, "loading" + TextUtil.ELLIPSIS, sideX + 4, ly + 4, muted, false);
+			g.text(font, Tr.t("diff.loading") + TextUtil.ELLIPSIS, sideX + 4, ly + 4, muted, false);
 		}
 		// review notes: the decision context (worker summary, reviewer notes) as little note cards
 		List<Note> notes = notes();
@@ -710,7 +727,7 @@ public final class DiffScreen extends Screen {
 			int bottom = bodyY + bodyH;
 			if (ny + 26 < bottom) {
 				Panels.divider(g, sideX, ny - 5, sideW);
-				g.text(font, "NOTES", sideX + 2, ny, muted, false);
+				g.text(font, Tr.t("diff.notes_heading"), sideX + 2, ny, muted, false);
 				ny += 12;
 				for (Note note : notes) {
 					List<String> lines = TextUtil.wrapPlain(font, ReviewKit.plain(note.text()), sideW - 11);
@@ -761,10 +778,11 @@ public final class DiffScreen extends Screen {
 		if (ctx == null || ctx.isBlank()) {
 			Task t = task();
 			if (t != null && t.summary() != null && !t.summary().isBlank()) {
-				out.add(new Note(worker, "summary", t.summary().trim(), false));
+				out.add(new Note(worker, Tr.t("diff.note_summary"), t.summary().trim(), false));
 			}
 			return out;
 		}
+		// "Merge refused:", "Reviewed by X:" and "(cancelled" are matched in the Foreman's context text (not translated)
 		for (String line : ctx.split("\n")) {
 			String l = line.trim();
 			if (l.isEmpty() || l.startsWith("Merge refused:") || l.matches("^\\d+ files?, \\+\\d+ -\\d+.*")) {
@@ -772,11 +790,11 @@ public final class DiffScreen extends Screen {
 			}
 			java.util.regex.Matcher m = REVIEWED.matcher(l);
 			if (m.matches()) {
-				out.add(new Note(agentByName(m.group(1)), "reviewed", m.group(2).trim(), false));
+				out.add(new Note(agentByName(m.group(1)), Tr.t("diff.note_reviewed"), m.group(2).trim(), false));
 			} else if (l.startsWith("(cancelled")) {
-				out.add(new Note(null, "cancelled", l, true));
+				out.add(new Note(null, Tr.t("diff.note_cancelled"), l, true));
 			} else {
-				out.add(new Note(worker, out.isEmpty() ? "summary" : "note", l, false));
+				out.add(new Note(worker, out.isEmpty() ? Tr.t("diff.note_summary") : Tr.t("diff.note_note"), l, false));
 			}
 		}
 		return out;
@@ -838,14 +856,14 @@ public final class DiffScreen extends Screen {
 			if (load == Load.LOADING) {
 				double p = ((System.currentTimeMillis() - requestedAt) % 1400) / 1400.0;
 				Panels.sprite(g, Kit.progressRing(p), ccx - 16, cy - 30, 32, 32);
-				msg = "Fetching the diff of " + target.worktree() + TextUtil.ELLIPSIS;
+				msg = Tr.t("diff.fetching", target.worktree()) + TextUtil.ELLIPSIS;
 			} else if (load == Load.ERROR) {
-				msg = "Could not load the diff";
-				sub = (error == null ? "" : error) + "   F5 retry";
+				msg = Tr.t("diff.could_not_load");
+				sub = (error == null ? "" : error) + "   " + Tr.t("diff.f5_retry");
 				color = UiStyle.color("paper.del_fg");
 			} else {
-				msg = "Nothing to review";
-				sub = "No open merge decisions and no active worktrees.";
+				msg = Tr.t("diff.nothing_to_review");
+				sub = Tr.t("diff.nothing_to_review_sub");
 			}
 			g.text(font, msg, ccx - font.width(msg) / 2, cy, color, false);
 			if (sub != null) {
@@ -855,7 +873,7 @@ public final class DiffScreen extends Screen {
 			return;
 		}
 		if (doc.files.isEmpty()) {
-			String msg = "No changes in this worktree yet";
+			String msg = Tr.t("diff.no_changes_yet");
 			g.text(font, msg, codeX + (codeW - font.width(msg)) / 2, bodyY + bodyH / 2 - 4, muted, false);
 			return;
 		}
@@ -937,7 +955,7 @@ public final class DiffScreen extends Screen {
 				g.text(font, r.text, tx, y + 3, UiStyle.color("paper.hunk"), false);
 				int right = x1 - 6;
 				if (r.hidden > 0) {
-					String skip = r.hidden + (r.hidden == 1 ? " unchanged line" : " unchanged lines");
+					String skip = Tr.t(r.hidden == 1 ? "diff.unchanged_lines_one" : "diff.unchanged_lines_many", r.hidden);
 					int sw = font.width(skip);
 					if (right - sw > tx + font.width(r.text) + 40) {
 						g.text(font, skip, right - sw, y + 3, ReviewKit.mix(ReviewKit.muted(), UiStyle.color("palette.ui.inset"), 0.25f), false);
@@ -991,7 +1009,8 @@ public final class DiffScreen extends Screen {
 		int total = f.file.additions() + f.file.deletions();
 		int cx;
 		if (f.file.binary() || total == 0) {
-			String tag = f.file.binary() ? "binary" : f.file.status() == Protocol.DiffFileStatus.RENAMED ? "moved" : "no changes";
+			String tag = f.file.binary() ? Tr.t("diff.tag_binary") : f.file.status() == Protocol.DiffFileStatus.RENAMED ? Tr.t("diff.tag_moved")
+				: Tr.t("diff.tag_no_changes");
 			cx = x1 - 6 - font.width(tag);
 			g.text(font, tag, cx, y + 6, ReviewKit.muted(), false);
 		} else {
@@ -1163,7 +1182,7 @@ public final class DiffScreen extends Screen {
 		boolean offline = offline();
 		// right: copy path
 		String path = selectedPath();
-		String copy = "Copy path";
+		String copy = Tr.t("diff.copy_path");
 		int cw = ReviewKit.buttonWidth(font, copy);
 		int cx = right - cw;
 		if (path != null) {
@@ -1174,8 +1193,8 @@ public final class DiffScreen extends Screen {
 		int leftEnd = x;
 		switch (mode) {
 			case FEEDBACK -> {
-				String send = "Send";
-				String cancel = "Cancel";
+				String send = Tr.t("diff.send");
+				String cancel = Tr.t("diff.cancel");
 				int sw = ReviewKit.buttonWidth(font, send);
 				int kw = ReviewKit.buttonWidth(font, cancel);
 				int fw = Math.max(80, cx - 8 - sw - 4 - kw - 4 - x);
@@ -1185,44 +1204,45 @@ public final class DiffScreen extends Screen {
 					feedback.setY(y + 6);
 					feedback.setWidth(fw - 12);
 					if (feedback.getValue().isEmpty()) {
-						g.text(font, TextUtil.ellipsize(font, "What should " + ReviewKit.agentName(worker()) + " change?  Enter sends, Esc cancels", fw - 16),
+						g.text(font, TextUtil.ellipsize(font, Tr.t("diff.feedback_placeholder", ReviewKit.agentName(worker())), fw - 16),
 							x + 7, y + 6, UiStyle.color("ink_ui.ghost_on_paper"), false);
 					}
 				}
 				int bx = x + fw + 4;
-				button(g, "send", send, bx, y, sw, ButtonKind.PRIMARY, feedback != null && !feedback.getValue().isBlank() && !offline, mx, my, "Enter");
-				button(g, "cancel", cancel, bx + sw + 4, y, kw, ButtonKind.NORMAL, true, mx, my, "Esc");
+				button(g, "send", send, bx, y, sw, ButtonKind.PRIMARY, feedback != null && !feedback.getValue().isBlank() && !offline, mx, my, Tr.t(
+					"diff.key_enter"));
+				button(g, "cancel", cancel, bx + sw + 4, y, kw, ButtonKind.NORMAL, true, mx, my, Tr.t("diff.key_esc"));
 				leftEnd = cx;
 			}
 			case CONFIRM_MERGE -> {
 				Worktree w = worktreeInfo();
-				String base = w != null ? w.base() : diff != null && diff.base() != null ? diff.base() : "the base branch";
-				String q = "Merge " + (target.worktree() == null ? "this branch" : target.worktree()) + " into " + base + "?";
-				String yes = "Confirm merge";
-				String no = "Cancel";
+				String base = w != null ? w.base() : diff != null && diff.base() != null ? diff.base() : Tr.t("diff.the_base_branch");
+				String q = Tr.t("diff.confirm_merge_question", target.worktree() == null ? Tr.t("diff.this_branch") : target.worktree(), base);
+				String yes = Tr.t("diff.confirm_merge");
+				String no = Tr.t("diff.cancel");
 				int yw = ReviewKit.buttonWidth(font, yes);
 				int nw = ReviewKit.buttonWidth(font, no);
-				button(g, "merge_confirm", yes, x, y, yw, ButtonKind.PRIMARY, load == Load.READY && !offline, mx, my, "Enter");
-				button(g, "cancel", no, x + yw + 4, y, nw, ButtonKind.NORMAL, true, mx, my, "Esc");
+				button(g, "merge_confirm", yes, x, y, yw, ButtonKind.PRIMARY, load == Load.READY && !offline, mx, my, Tr.t("diff.key_enter"));
+				button(g, "cancel", no, x + yw + 4, y, nw, ButtonKind.NORMAL, true, mx, my, Tr.t("diff.key_esc"));
 				int qx = x + yw + nw + 12;
 				g.text(font, TextUtil.ellipsize(font, q, cx - 8 - qx), qx, y + 6, ReviewKit.ink(), false);
 				leftEnd = cx;
 			}
 			case CONFIRM_REJECT -> {
-				String q = "Reject abandons " + (target.worktree() == null ? "the branch" : target.worktree()) + ".";
-				String yes = "Reject branch";
-				String no = "Keep it";
+				String q = Tr.t("diff.confirm_reject_question", target.worktree() == null ? Tr.t("diff.the_branch") : target.worktree());
+				String yes = Tr.t("diff.reject_branch");
+				String no = Tr.t("diff.keep_it");
 				int yw = ReviewKit.buttonWidth(font, yes);
 				int nw = ReviewKit.buttonWidth(font, no);
-				button(g, "reject_confirm", yes, x, y, yw, ButtonKind.DANGER, !offline, mx, my, "x / Enter");
-				button(g, "cancel", no, x + yw + 4, y, nw, ButtonKind.NORMAL, true, mx, my, "Esc");
+				button(g, "reject_confirm", yes, x, y, yw, ButtonKind.DANGER, !offline, mx, my, "x / " + Tr.t("diff.key_enter"));
+				button(g, "cancel", no, x + yw + 4, y, nw, ButtonKind.NORMAL, true, mx, my, Tr.t("diff.key_esc"));
 				int qx = x + yw + nw + 12;
 				g.text(font, TextUtil.ellipsize(font, q, cx - 8 - qx), qx, y + 6, UiStyle.color("paper.del_fg"), false);
 				leftEnd = cx;
 			}
 			case SENDING, DONE -> {
-				String msg = mode == Mode.SENDING ? "Sending \"" + sentOption + "\" to the Foreman" + TextUtil.ELLIPSIS
-					: doneText();
+				String msg = mode == Mode.SENDING ? Tr.t("diff.sending_option", sentOption == null ? "" : DecisionQueue.optionLabel(Protocol.DecisionKind.MERGE,
+					sentOption)) + TextUtil.ELLIPSIS : doneText();
 				int c = mode == Mode.DONE && Protocol.MERGE.equals(sentOption) ? UiStyle.color("paper.add_fg") : ReviewKit.muted();
 				if (mode == Mode.DONE) {
 					Panels.dot(g, answerFamily(sentOption), x, y + 6, false);
@@ -1233,21 +1253,22 @@ public final class DiffScreen extends Screen {
 			}
 			default -> {
 				if (open) {
-					String merge = "Merge";
-					String req = "Request changes";
-					String rej = "Reject";
+					// button labels only: the options sent are the Protocol constants (see act)
+					String merge = DecisionQueue.optionLabel(Protocol.DecisionKind.MERGE, Protocol.MERGE);
+					String req = DecisionQueue.optionLabel(Protocol.DecisionKind.MERGE, Protocol.REQUEST_CHANGES);
+					String rej = DecisionQueue.optionLabel(Protocol.DecisionKind.MERGE, Protocol.REJECT);
 					int w1 = Math.max(64, ReviewKit.buttonWidth(font, merge));
 					int w2 = ReviewKit.buttonWidth(font, req);
 					int w3 = ReviewKit.buttonWidth(font, rej);
 					boolean ready = load == Load.READY && !offline;
-					button(g, "merge", merge, x, y, w1, ButtonKind.PRIMARY, ready, mx, my, ready ? "Ctrl+Enter  ·  merge into "
-						+ (worktreeInfo() != null ? worktreeInfo().base() : "the base branch") : offline ? "Foreman offline" : "Waiting for the diff");
-					button(g, "request", req, x + w1 + 4, y, w2, ButtonKind.NORMAL, !offline, mx, my, "r  ·  send feedback to "
-						+ ReviewKit.agentName(worker()));
-					button(g, "reject", rej, x + w1 + w2 + 8, y, w3, ButtonKind.DANGER, !offline, mx, my, "x  ·  abandon the branch");
+					button(g, "merge", merge, x, y, w1, ButtonKind.PRIMARY, ready, mx, my, ready ? Tr.t("diff.tip_merge_into", worktreeInfo() != null
+						? worktreeInfo().base() : Tr.t("diff.the_base_branch")) : offline ? Tr.t("diff.foreman_offline") : Tr.t("diff.waiting_for_diff"));
+					button(g, "request", req, x + w1 + 4, y, w2, ButtonKind.NORMAL, !offline, mx, my, Tr.t("diff.tip_send_feedback_to", ReviewKit
+						.agentName(worker())));
+					button(g, "reject", rej, x + w1 + w2 + 8, y, w3, ButtonKind.DANGER, !offline, mx, my, Tr.t("diff.tip_abandon_branch"));
 					leftEnd = x + w1 + w2 + w3 + 8 + 10;
 					if (offline) {
-						String o = "Foreman offline: read only";
+						String o = Tr.t("diff.offline_read_only");
 						g.text(font, o, leftEnd, y + 6, UiStyle.color("paper.del_fg"), false);
 						leftEnd += font.width(o) + 10;
 					}
@@ -1255,12 +1276,14 @@ public final class DiffScreen extends Screen {
 					Decision d = decision();
 					String s;
 					if (d == null) {
-						s = target.isEmpty() ? "" : "Read only: no merge decision for this worktree";
+						s = target.isEmpty() ? "" : Tr.t("diff.read_only_no_decision");
 					} else if (d.status() == Protocol.DecisionStatus.CANCELLED) {
-						s = "This merge decision was cancelled";
+						s = Tr.t("diff.decision_cancelled");
 					} else {
-						String opt = d.answer() != null && d.answer().option() != null ? d.answer().option() : "answered";
-						s = "Answered: " + opt + (d.answer() != null && d.answer().text() != null ? " \"" + d.answer().text() + "\"" : "");
+						String opt = d.answer() != null && d.answer().option() != null ? DecisionQueue.optionLabel(d.kind(), d.answer().option())
+							: Tr.t("diff.answered_lower");
+						s = d.answer() != null && d.answer().text() != null ? Tr.t("diff.answered_with_text", opt, d.answer().text())
+							: Tr.t("diff.answered_with", opt);
 					}
 					if (!s.isEmpty()) {
 						s = TextUtil.ellipsize(font, s, Math.max(40, (cx - x) / 2));
@@ -1281,7 +1304,8 @@ public final class DiffScreen extends Screen {
 		if (mode != Mode.BROWSE) {
 			return;
 		}
-		String[][] hints = {{"Esc", "close"}, {"w", wrap ? "no wrap" : "wrap"}, {"n p", "file"}, {"j k", "scroll"}};
+		String[][] hints = {{Tr.t("diff.key_esc"), Tr.t("diff.hint_close")}, {"w", wrap ? Tr.t("diff.hint_no_wrap") : Tr.t("diff.hint_wrap")}, {"n p", Tr
+			.t("diff.hint_file")}, {"j k", Tr.t("diff.hint_scroll")}};
 		for (String[] h : hints) {
 			int w = ReviewKit.hintWidth(font, h[0], h[1]);
 			if (hx - w < leftEnd) {
@@ -1304,12 +1328,12 @@ public final class DiffScreen extends Screen {
 	private String doneText() {
 		String who = ReviewKit.agentName(worker());
 		if (Protocol.MERGE.equals(sentOption)) {
-			return "Merge approved. The Foreman is merging " + (target.worktree() == null ? "" : target.worktree()) + ".";
+			return Tr.t("diff.done_merge", target.worktree() == null ? "" : target.worktree());
 		}
 		if (Protocol.REQUEST_CHANGES.equals(sentOption)) {
-			return "Feedback sent to " + who + ".";
+			return Tr.t("diff.done_feedback", who);
 		}
-		return "Rejected. The branch was abandoned.";
+		return Tr.t("diff.done_reject");
 	}
 
 	private void button(GuiGraphicsExtractor g, String id, String label, int x, int y, int w, ButtonKind kind, boolean enabled, int mx, int my,
@@ -1379,7 +1403,7 @@ public final class DiffScreen extends Screen {
 		if (feedback != null) {
 			removeWidget(feedback);
 		}
-		feedback = new EditBox(font, ix + 6, barY + 6, 200, 10, Component.literal("Feedback"));
+		feedback = new EditBox(font, ix + 6, barY + 6, 200, 10, Component.translatable("agentcraft.diff.feedback"));
 		feedback.setBordered(false);
 		feedback.setTextShadow(false);
 		feedback.setTextColor(ReviewKit.ink());
@@ -1397,7 +1421,7 @@ public final class DiffScreen extends Screen {
 	private void send(String option, @Nullable String text) {
 		Decision d = decision();
 		if (d == null || !d.isOpen() || offline()) {
-			flash("This decision is no longer open", true);
+			flash(Tr.t("diff.no_longer_open"), true);
 			return;
 		}
 		Mode before = mode == Mode.FEEDBACK ? Mode.FEEDBACK : Mode.BROWSE;
@@ -1413,7 +1437,7 @@ public final class DiffScreen extends Screen {
 				if (feedback != null) {
 					feedback.setEditable(true);
 				}
-				flash("Not sent: " + problem, true);
+				flash(Tr.t("diff.not_sent", problem), true);
 			} else {
 				mode = Mode.DONE;
 				doneAt = System.currentTimeMillis();
@@ -1428,11 +1452,11 @@ public final class DiffScreen extends Screen {
 		Worktree w = worktreeInfo();
 		String p = root && w != null ? w.path() : selectedPath();
 		if (p == null) {
-			flash("No worktree path known", true);
+			flash(Tr.t("diff.no_worktree_path"), true);
 			return;
 		}
 		minecraft.keyboardHandler.setClipboard(p);
-		flash("Copied " + p, false);
+		flash(Tr.t("diff.copied", p), false);
 	}
 
 	private void flash(String msg, boolean isError) {

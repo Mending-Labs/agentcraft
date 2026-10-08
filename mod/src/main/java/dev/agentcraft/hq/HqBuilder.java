@@ -1,6 +1,7 @@
 package dev.agentcraft.hq;
 
 import dev.agentcraft.layout.Anchors;
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 
 /**
@@ -30,10 +31,17 @@ public interface HqBuilder {
 	}
 
 	/**
+	 * A build report: {@code log} in English for the log and QA, {@code message} (translatable) for the
+	 * player's chat.
+	 */
+	record Report(String log, Component message) {
+	}
+
+	/**
 	 * Builds with options and returns a one-line report for the player (null = nothing to say).
 	 * The default ignores the options.
 	 */
-	default @org.jspecify.annotations.Nullable String build(ServerLevel level, Anchors.Builder anchors, Options options) {
+	default @org.jspecify.annotations.Nullable Report build(ServerLevel level, Anchors.Builder anchors, Options options) {
 		build(level, anchors);
 		return null;
 	}

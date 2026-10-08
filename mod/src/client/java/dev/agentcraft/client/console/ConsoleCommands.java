@@ -11,6 +11,7 @@ import dev.agentcraft.client.foreman.Protocol.Task;
 import dev.agentcraft.client.foreman.Protocol.TaskStatus;
 import dev.agentcraft.client.foreman.Protocol.Worktree;
 import dev.agentcraft.client.foreman.Protocol.WorktreeStatus;
+import dev.agentcraft.client.ui.Tr;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -95,21 +96,29 @@ public final class ConsoleCommands {
 	public record Command(String name, String usage, String help) {
 	}
 
-	public static final List<Command> COMMANDS = List.of(
-		new Command("answer", "/answer [d4] <n|option> [text]", "answer an open decision (n = button number)"),
-		new Command("decide", "/decide", "open the decision queue (J)"),
-		new Command("diff", "/diff [worktree|@agent]", "review a worktree's diff"),
-		new Command("pause", "/pause @agent", "pause an agent (keeps its task)"),
-		new Command("resume", "/resume @agent", "resume a paused or stopped agent"),
-		new Command("stop", "/stop @agent", "take an agent off shift"),
-		new Command("spawn", "/spawn @agent [task]", "bring an agent on shift"),
-		new Command("task", "/task <id> cancel|retry|prioritize|reassign", "steer a task"),
-		new Command("repo", "/repo add <path>", "register a local git repo"),
-		new Command("repos", "/repos", "list repos"),
-		new Command("status", "/status", "goal, agents, tasks and decisions"),
-		new Command("sound", "/sound on|off", "decision bell and done chime"),
-		new Command("clear", "/clear", "clear the console's own lines"),
-		new Command("help", "/help", "this list"));
+	/**
+	 * The commands with their usage and help in the current language. Resolved on each call (never at
+	 * class load: the language is not loaded yet then); the command words themselves never change.
+	 */
+	public static List<Command> commands() {
+		String option = Tr.t("console.usage_option");
+		String text = Tr.t("console.usage_text");
+		return List.of(
+			new Command("answer", "/answer [d4] <n|" + option + "> [" + text + "]", Tr.t("console.cmd_answer_help")),
+			new Command("decide", "/decide", Tr.t("console.cmd_decide_help")),
+			new Command("diff", "/diff [worktree|@agent]", Tr.t("console.cmd_diff_help")),
+			new Command("pause", "/pause @agent", Tr.t("console.cmd_pause_help")),
+			new Command("resume", "/resume @agent", Tr.t("console.cmd_resume_help")),
+			new Command("stop", "/stop @agent", Tr.t("console.cmd_stop_help")),
+			new Command("spawn", "/spawn @agent [" + Tr.t("console.usage_task") + "]", Tr.t("console.cmd_spawn_help")),
+			new Command("task", "/task <id> cancel|retry|prioritize|reassign", Tr.t("console.cmd_task_help")),
+			new Command("repo", "/repo add <" + Tr.t("console.usage_path") + ">", Tr.t("console.cmd_repo_help")),
+			new Command("repos", "/repos", Tr.t("console.cmd_repos_help")),
+			new Command("status", "/status", Tr.t("console.cmd_status_help")),
+			new Command("sound", "/sound on|off", Tr.t("console.cmd_sound_help")),
+			new Command("clear", "/clear", Tr.t("console.cmd_clear_help")),
+			new Command("help", "/help", Tr.t("console.cmd_help_help")));
+	}
 
 	private static final List<String> AGENT_ACTIONS = List.of("pause", "resume", "stop", "spawn");
 	private static final List<String> TASK_ACTIONS = List.of("cancel", "retry", "prioritize", "reassign");
@@ -156,14 +165,14 @@ public final class ConsoleCommands {
 		String who = sp < 0 ? trimmed.substring(1) : trimmed.substring(1, sp);
 		String text = sp < 0 ? "" : trimmed.substring(sp + 1).strip();
 		if (who.isEmpty()) {
-			return new Invalid("type an agent name after @ (Tab completes)");
+			return new Invalid(Tr.t("console.err_agent_after_at"));
 		}
 		String id = resolveAgent(who, s, true);
 		if (id == null) {
-			return new Invalid("no agent named @" + who + agentListSuffix(s));
+			return new Invalid(Tr.t("console.err_no_agent", who, agentListSuffix(s)));
 		}
 		if (text.isEmpty()) {
-			return new Invalid("type a message for @" + displayName(id, s));
+			return new Invalid(Tr.t("console.err_message_for", displayName(id, s)));
 		}
 		return new Message(id, text);
 	}
@@ -186,8 +195,8 @@ public final class ConsoleCommands {
 			case "decide", "decisions", "d" -> new Decide(args.isEmpty() ? null : args.get(0));
 			case "clear", "cls" -> new Clear();
 			case "sound", "sounds", "mute" -> parseSound(cmd, args);
-			case "goal" -> rest.isEmpty() ? new Invalid("type the goal after /goal") : goal(rest, s);
-			default -> new Invalid("unknown command /" + cmd + " (/help lists them)");
+			case "goal" -> rest.isEmpty() ? new Invalid(Tr.t("console.err_goal_after")) : goal(rest, s);
+			default -> new Invalid(Tr.t("console.err_unknown_command", cmd));
 		};
 	}
 
@@ -201,7 +210,7 @@ public final class ConsoleCommands {
 		return switch (args.get(0).toLowerCase(Locale.ROOT)) {
 			case "on", "1", "yes" -> new Sound(true);
 			case "off", "0", "no" -> new Sound(false);
-			default -> new Invalid("/sound on or /sound off");
+			default -> new Invalid(Tr.t("console.err_sound_usage"));
 		};
 	}
 
@@ -214,21 +223,22 @@ public final class ConsoleCommands {
 			return new Repos();
 		}
 		if (!sub.equals("add")) {
-			return new Invalid("usage: /repo add <path to a local git repo>");
+			return new Invalid(Tr.t("console.err_repo_usage"));
 		}
 		String path = rest.strip().substring(3).strip();
 		if (path.length() >= 2 && (path.startsWith("\"") && path.endsWith("\"") || path.startsWith("'") && path.endsWith("'"))) {
 			path = path.substring(1, path.length() - 1).strip();
 		}
 		if (path.isEmpty()) {
-			return new Invalid("usage: /repo add <path to a local git repo>");
+			return new Invalid(Tr.t("console.err_repo_usage"));
 		}
 		return new RepoAdd(path);
 	}
 
 	private static Intent parseAgentAction(String action, List<String> args, ForemanState s) {
 		if (args.isEmpty()) {
-			return new Invalid("usage: /" + action + " @agent" + (action.equals("spawn") ? " [task]" : ""));
+			String taskArg = action.equals("spawn") ? " [" + Tr.t("console.usage_task") + "]" : "";
+			return new Invalid(Tr.t("console.err_agent_action_usage", action, taskArg));
 		}
 		List<String> ids = new ArrayList<>();
 		String arg = null;
@@ -238,7 +248,7 @@ public final class ConsoleCommands {
 				// spawn @kit t5: the task id
 				String tid = a.startsWith("#") ? a.substring(1) : a;
 				if (s.task(tid) == null) {
-					return new Invalid("no task " + tid + taskListSuffix(s));
+					return new Invalid(Tr.t("console.err_no_task", tid, taskListSuffix(s)));
 				}
 				arg = tid;
 				break;
@@ -246,7 +256,7 @@ public final class ConsoleCommands {
 			String bare = a.startsWith("@") ? a.substring(1) : a;
 			if (bare.equalsIgnoreCase("all") || bare.equalsIgnoreCase("everyone")) {
 				if (action.equals("spawn")) {
-					return new Invalid("spawn one agent at a time: /spawn @agent [task]");
+					return new Invalid(Tr.t("console.err_spawn_one", "/spawn @agent [" + Tr.t("console.usage_task") + "]"));
 				}
 				for (Agent ag : s.agents().values()) {
 					boolean wanted = switch (action) {
@@ -259,13 +269,13 @@ public final class ConsoleCommands {
 					}
 				}
 				if (ids.isEmpty()) {
-					return new Invalid("nobody to " + action);
+					return new Invalid(Tr.t("console.err_nobody_" + action));
 				}
 				continue;
 			}
 			String id = resolveAgent(bare, s, false);
 			if (id == null) {
-				return new Invalid("no agent named @" + bare + agentListSuffix(s));
+				return new Invalid(Tr.t("console.err_no_agent", bare, agentListSuffix(s)));
 			}
 			if (!ids.contains(id)) {
 				ids.add(id);
@@ -276,37 +286,37 @@ public final class ConsoleCommands {
 
 	private static Intent parseTask(List<String> args, ForemanState s) {
 		if (args.isEmpty()) {
-			return new Invalid("usage: /task <id> cancel|retry|prioritize [n]|reassign @agent");
+			return new Invalid(Tr.t("console.err_task_usage"));
 		}
 		String tid = args.get(0).startsWith("#") ? args.get(0).substring(1) : args.get(0);
 		if (s.task(tid) == null) {
-			return new Invalid("no task " + tid + taskListSuffix(s));
+			return new Invalid(Tr.t("console.err_no_task", tid, taskListSuffix(s)));
 		}
 		if (args.size() < 2) {
-			return new Invalid("what should happen to " + tid + "? cancel, retry, prioritize [n] or reassign @agent");
+			return new Invalid(Tr.t("console.err_task_what", tid));
 		}
 		String action = args.get(1).toLowerCase(Locale.ROOT);
 		if (action.equals("prio") || action.equals("priority")) {
 			action = "prioritize";
 		}
 		if (!TASK_ACTIONS.contains(action)) {
-			return new Invalid("unknown task action '" + action + "': cancel, retry, prioritize [n] or reassign @agent");
+			return new Invalid(Tr.t("console.err_task_action_unknown", action));
 		}
 		String arg = null;
 		if (action.equals("reassign")) {
 			if (args.size() < 3) {
-				return new Invalid("reassign " + tid + " to whom? /task " + tid + " reassign @agent");
+				return new Invalid(Tr.t("console.err_reassign_whom", tid));
 			}
 			String bare = args.get(2).startsWith("@") ? args.get(2).substring(1) : args.get(2);
 			arg = resolveAgent(bare, s, false);
 			if (arg == null) {
-				return new Invalid("no agent named @" + bare + agentListSuffix(s));
+				return new Invalid(Tr.t("console.err_no_agent", bare, agentListSuffix(s)));
 			}
 		} else if (action.equals("prioritize") && args.size() >= 3) {
 			try {
 				arg = Integer.toString(Integer.parseInt(args.get(2)));
 			} catch (NumberFormatException e) {
-				return new Invalid("priority must be a whole number");
+				return new Invalid(Tr.t("console.err_priority_number"));
 			}
 		}
 		return new TaskAction(tid, action, arg);
@@ -318,13 +328,13 @@ public final class ConsoleCommands {
 			if (m != null && m.repoId() != null && m.worktree() != null) {
 				return new ShowDiff(m.repoId(), m.worktree(), m);
 			}
-			return new Invalid("usage: /diff <worktree> or /diff @agent" + worktreeListSuffix(s));
+			return new Invalid(Tr.t("console.err_diff_usage", worktreeListSuffix(s)));
 		}
 		String target = args.get(0);
 		if (target.startsWith("@")) {
 			String id = resolveAgent(target.substring(1), s, false);
 			if (id == null) {
-				return new Invalid("no agent named " + target + agentListSuffix(s));
+				return new Invalid(Tr.t("console.err_no_agent", target.substring(1), agentListSuffix(s)));
 			}
 			Agent a = s.agent(id);
 			if (a == null || a.worktree() == null || a.repoId() == null) {
@@ -336,7 +346,7 @@ public final class ConsoleCommands {
 						}
 					}
 				}
-				return new Invalid(displayName(id, s) + " has no worktree right now");
+				return new Invalid(Tr.t("console.err_agent_no_worktree", displayName(id, s)));
 			}
 			return new ShowDiff(a.repoId(), a.worktree(), mergeFor(s, a.repoId(), a.worktree()));
 		}
@@ -352,7 +362,7 @@ public final class ConsoleCommands {
 		if (t != null && t.worktree() != null && t.repoId() != null) {
 			return new ShowDiff(t.repoId(), t.worktree(), mergeFor(s, t.repoId(), t.worktree()));
 		}
-		return new Invalid("no worktree '" + target + "'" + worktreeListSuffix(s));
+		return new Invalid(Tr.t("console.err_no_worktree", target, worktreeListSuffix(s)));
 	}
 
 	private static @Nullable Decision mergeFor(ForemanState s, String repoId, String worktree) {
@@ -367,7 +377,7 @@ public final class ConsoleCommands {
 	private static Intent parseAnswer(String rest, ForemanState s) {
 		List<Decision> open = DecisionQueue.open();
 		if (open.isEmpty()) {
-			return new Invalid("no decision is waiting");
+			return new Invalid(Tr.t("console.err_no_decision_waiting"));
 		}
 		String r = rest.strip();
 		Decision d = null;
@@ -376,16 +386,17 @@ public final class ConsoleCommands {
 		Decision byId = first.isEmpty() ? null : s.decision(first.startsWith("#") ? first.substring(1) : first);
 		if (byId != null) {
 			if (!byId.isOpen()) {
-				return new Invalid(byId.id() + " is already " + byId.status().wire());
+				return new Invalid(Tr.t("console.err_decision_already", byId.id(), decisionStatusLabel(byId.status())));
 			}
 			d = byId;
 			r = sp < 0 ? "" : r.substring(sp + 1).strip();
 		} else if (first.matches("(?i)d\\d+")) {
-			return new Invalid("no decision " + first + " (open: " + ids(open) + ")");
+			return new Invalid(Tr.t("console.err_no_decision", first, ids(open)));
 		} else if (open.size() == 1) {
 			d = open.get(0);
 		} else {
-			return new Invalid(open.size() + " decisions are open (" + ids(open) + "): /answer " + open.get(0).id() + " <n|option>");
+			return new Invalid(Tr.t("console.err_decisions_open", open.size(), ids(open), "/answer " + open.get(0).id() + " <n|"
+				+ Tr.t("console.usage_option") + ">"));
 		}
 		if (r.isEmpty()) {
 			return new Invalid(optionsHint(d));
@@ -403,18 +414,18 @@ public final class ConsoleCommands {
 				text = r.substring(option.length()).strip();
 			}
 			if (option.equals(Protocol.REQUEST_CHANGES) && text.isEmpty()) {
-				return new Invalid("say what should change: /answer " + d.id() + " " + (d.options().indexOf(option) + 1) + " <feedback>");
+				return new Invalid(Tr.t("console.err_say_what_changes", "/answer " + d.id() + " " + (d.options().indexOf(option) + 1)));
 			}
 			return new Answer(d, option, text.isEmpty() ? null : text);
 		}
 		if (tok.matches("\\d+")) {
-			return new Invalid("option " + tok + " does not exist. " + optionsHint(d));
+			return new Invalid(Tr.t("console.err_option_missing", tok, optionsHint(d)));
 		}
 		if (d.kind() == DecisionKind.QUESTION) {
 			// free-text answer
 			return new Answer(d, null, r);
 		}
-		return new Invalid("'" + tok + "' is not an option. " + optionsHint(d));
+		return new Invalid(Tr.t("console.err_not_an_option", tok, optionsHint(d)));
 	}
 
 	/** Option label for a token: 1-based number, exact label, a unique prefix or a known alias. */
@@ -442,6 +453,13 @@ public final class ConsoleCommands {
 			case "allow", "once", "yes", "ok" -> d.kind() == DecisionKind.PERMISSION ? Protocol.ALLOW_ONCE : null;
 			case "no" -> d.kind() == DecisionKind.PERMISSION ? Protocol.DENY : null;
 			case "changes", "request", "rc" -> Protocol.REQUEST_CHANGES;
+			// French aliases: the buttons are translated, the answer sent stays the English option
+			case "toujours" -> Protocol.ALWAYS_ALLOW;
+			case "autoriser", "oui", "une-fois" -> d.kind() == DecisionKind.PERMISSION ? Protocol.ALLOW_ONCE : null;
+			case "non", "refuser" -> d.kind() == DecisionKind.PERMISSION ? Protocol.DENY : null;
+			case "modifications", "modifs", "modifier" -> Protocol.REQUEST_CHANGES;
+			case "fusionner" -> Protocol.MERGE;
+			case "rejeter" -> Protocol.REJECT;
 			default -> null;
 		};
 		if (alias != null && opts.contains(alias)) {
@@ -461,16 +479,16 @@ public final class ConsoleCommands {
 
 	private static String optionsHint(Decision d) {
 		if (d.options().isEmpty()) {
-			return "type your answer: /answer " + d.id() + " <text>";
+			return Tr.t("console.hint_type_answer", "/answer " + d.id());
 		}
-		StringBuilder b = new StringBuilder("options for " + d.id() + ": ");
+		StringBuilder b = new StringBuilder();
 		for (int i = 0; i < d.options().size(); i++) {
 			if (i > 0) {
 				b.append(", ");
 			}
 			b.append(i + 1).append(' ').append(d.options().get(i));
 		}
-		return b.toString();
+		return Tr.t("console.hint_options_for", d.id(), b.toString());
 	}
 
 	// ------------------------------------------------------------------ describe (live intent preview)
@@ -478,21 +496,42 @@ public final class ConsoleCommands {
 	/** One short line for the right side of the input: what Enter will do. Null = nothing to say. */
 	public static @Nullable String describe(Intent in, ForemanState s) {
 		return switch (in) {
-			case Goal g -> g.repoId() == null ? "new goal" : "new goal → " + repoName(g.repoId(), s);
-			case Message m -> m.to().equals("all") ? "message everyone" : "message " + displayName(m.to(), s);
-			case Answer a -> "answer " + a.decision().id() + (a.option() != null ? ": " + a.option() : ": free text");
-			case RepoAdd r -> "add repo";
-			case Repos r -> "list repos";
-			case AgentAction a -> a.action() + " " + (a.agentIds().size() == 1 ? displayName(a.agentIds().get(0), s) : a.agentIds().size() + " agents");
-			case TaskAction t -> t.action() + " " + t.taskId();
-			case ShowDiff d -> "diff " + d.worktree();
-			case Status st -> "show status";
-			case Help h -> "show help";
-			case Decide d -> "open decisions";
-			case Clear c -> "clear console";
-			case Sound so -> so.on() == null ? "sound status" : so.on() ? "sound on" : "sound off";
+			case Goal g -> g.repoId() == null ? Tr.t("console.desc_new_goal") : Tr.t("console.desc_new_goal_repo", repoName(g.repoId(), s));
+			case Message m -> m.to().equals("all") ? Tr.t("console.desc_message_everyone") : Tr.t("console.desc_message", displayName(m.to(), s));
+			case Answer a -> Tr.t("console.desc_answer", a.decision().id(), a.option() != null ? a.option() : Tr.t("console.desc_free_text"));
+			case RepoAdd r -> Tr.t("console.desc_add_repo");
+			case Repos r -> Tr.t("console.cmd_repos_help");
+			case AgentAction a -> agentActionText(a.action(), a.agentIds().size() == 1 ? displayName(a.agentIds().get(0), s)
+				: Tr.t("console.n_agents", a.agentIds().size()));
+			case TaskAction t -> taskActionText(t.action(), t.taskId());
+			case ShowDiff d -> Tr.t("console.desc_diff", d.worktree());
+			case Status st -> Tr.t("console.desc_show_status");
+			case Help h -> Tr.t("console.desc_show_help");
+			case Decide d -> Tr.t("console.desc_open_decisions");
+			case Clear c -> Tr.t("console.desc_clear_console");
+			case Sound so -> so.on() == null ? Tr.t("console.desc_sound_status") : so.on() ? Tr.t("console.desc_sound_on") : Tr.t("console.desc_sound_off");
 			case Invalid i -> null;
 			case Empty e -> null;
+		};
+	}
+
+	/** "pause Kit": what an agent action does (input hint, pending status). The action itself stays the wire word. */
+	static String agentActionText(String action, String who) {
+		return AGENT_ACTIONS.contains(action) ? Tr.t("console.desc_agent_" + action, who) : action + " " + who;
+	}
+
+	/** "cancel t5": what a task action does (input hint, pending status). */
+	static String taskActionText(String action, String taskId) {
+		return TASK_ACTIONS.contains(action) ? Tr.t("console.desc_task_" + action, taskId) : action + " " + taskId;
+	}
+
+	/** Display label of a decision status (the wire value is unchanged). */
+	static String decisionStatusLabel(Protocol.DecisionStatus st) {
+		return switch (st) {
+			case OPEN -> Tr.t("console.decision_status_open");
+			case ANSWERED -> Tr.t("console.decision_status_answered");
+			case CANCELLED -> Tr.t("console.decision_status_cancelled");
+			default -> st.wire();
 		};
 	}
 
@@ -533,7 +572,7 @@ public final class ConsoleCommands {
 				agentCompletions(out, ts, cursor, lower.substring(1), s, true, " ");
 			} else if (token.startsWith("/")) {
 				String p = lower.substring(1);
-				for (Command c : COMMANDS) {
+				for (Command c : commands()) {
 					if (c.name().startsWith(p) && !(c.name().equals(p) && cursor < input.length())) {
 						out.add(new Completion(ts, cursor, "/" + c.name() + " ", "/" + c.name(), c.help(), null, null));
 					}
@@ -579,7 +618,7 @@ public final class ConsoleCommands {
 						for (Repo r : s.repos().values()) {
 							for (Worktree w : r.worktrees()) {
 								if (w.status() == WorktreeStatus.ACTIVE && w.id().toLowerCase(Locale.ROOT).startsWith(lower)) {
-									out.add(new Completion(ts, cursor, w.id(), w.id(), w.files() + " files, +" + w.additions() + " -" + w.deletions(), w.agentId(),
+									out.add(new Completion(ts, cursor, w.id(), w.id(), Tr.t("console.worktree_detail", w.files(), w.additions(), w.deletions()), w.agentId(),
 										null));
 								}
 							}
@@ -602,7 +641,7 @@ public final class ConsoleCommands {
 			}
 			case "/repo" -> {
 				if (argIndex == 1 && "add".startsWith(lower)) {
-					out.add(new Completion(ts, cursor, "add ", "add", "register a local git repo", null, null));
+					out.add(new Completion(ts, cursor, "add ", "add", Tr.t("console.cmd_repo_help"), null, null));
 				}
 			}
 			case "/sound" -> {
@@ -623,13 +662,13 @@ public final class ConsoleCommands {
 	private static void agentCompletions(List<Completion> out, int start, int end, String prefix, ForemanState s, boolean withAll, String suffix) {
 		for (Agent a : s.agents().values()) {
 			if (a.id().startsWith(prefix) || a.name().toLowerCase(Locale.ROOT).startsWith(prefix)) {
-				String detail = a.isActive() ? (a.isPaused() ? "paused" : a.activity()) : "off shift";
+				String detail = a.isActive() ? (a.isPaused() ? Tr.t("console.paused") : a.activity()) : Tr.t("console.off_shift");
 				out.add(new Completion(start, end, "@" + a.name().toLowerCase(Locale.ROOT) + suffix, a.name(), detail, a.id(), a.isPaused() ? "idle"
 					: a.state().family()));
 			}
 		}
 		if (withAll && "all".startsWith(prefix) && !prefix.isEmpty()) {
-			out.add(new Completion(start, end, "@all" + suffix, "all", "everyone on shift", null, null));
+			out.add(new Completion(start, end, "@all" + suffix, "all", Tr.t("console.everyone_on_shift"), null, null));
 		}
 	}
 
@@ -674,7 +713,7 @@ public final class ConsoleCommands {
 
 	public static String displayName(String agentId, ForemanState s) {
 		if (agentId.equals("all")) {
-			return "everyone";
+			return Tr.t("console.everyone");
 		}
 		Agent a = s.agent(agentId);
 		return a != null ? a.name() : agentId;
@@ -690,7 +729,7 @@ public final class ConsoleCommands {
 
 	private static String agentListSuffix(ForemanState s) {
 		if (s.agents().isEmpty()) {
-			return " (no agents yet)";
+			return " (" + Tr.t("console.no_agents_yet") + ")";
 		}
 		StringBuilder b = new StringBuilder(" (");
 		int i = 0;
