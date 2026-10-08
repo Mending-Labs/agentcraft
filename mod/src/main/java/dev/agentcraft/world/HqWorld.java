@@ -34,7 +34,8 @@ public final class HqWorld {
 	public static void init() {
 		ServerLifecycleEvents.SERVER_STARTED.register(HqWorld::onServerStarted);
 		ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
-			if (!isHq(server)) {
+			// singleplayer only: on a shared HQ server the gamemode is the server's (and each player's)
+			if (!isHq(server) || server.isDedicatedServer()) {
 				return;
 			}
 			ServerPlayer player = handler.getPlayer();

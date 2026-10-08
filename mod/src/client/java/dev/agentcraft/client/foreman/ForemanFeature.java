@@ -5,6 +5,7 @@ import dev.agentcraft.AgentCraft;
 import dev.agentcraft.client.ClientEnv;
 import dev.agentcraft.client.dev.DevBridge;
 import dev.agentcraft.client.dev.Fields;
+import dev.agentcraft.client.hq.HqSession;
 import dev.agentcraft.client.foreman.Protocol.Decision;
 import dev.agentcraft.client.foreman.Protocol.ForemanStatus;
 import dev.agentcraft.client.foreman.Protocol.Goal;
@@ -47,7 +48,13 @@ public final class ForemanFeature {
 		// Executor: the client thread. Minecraft.getInstance() is resolved lazily (it does not exist yet during init).
 		ForemanLink link = new ForemanLink(uri, token, modVersion, state, r -> Minecraft.getInstance().execute(r), enabled);
 		Foreman.install(state, link);
-		ClientLifecycleEvents.CLIENT_STARTED.register(mc -> link.start());
+		// a shared Foreman (remote.json) is only for the HQ: connect when arriving there, not on the
+		// other servers the mod is installed for; a local Foreman connects at start, as before
+		if (remote == null) {
+			ClientLifecycleEvents.CLIENT_STARTED.register(mc -> link.start());
+		} else {
+			HqSession.onActive(link::start);
+		}
 		ClientLifecycleEvents.CLIENT_STOPPING.register(mc -> link.stop());
 
 		DevBridge.addStateContributor((mc, o) -> o.add("foreman", stateJson()));

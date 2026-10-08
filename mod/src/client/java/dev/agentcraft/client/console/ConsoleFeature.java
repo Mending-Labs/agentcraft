@@ -8,6 +8,7 @@ import dev.agentcraft.client.console.ConsoleCommands.Completion;
 import dev.agentcraft.client.dev.DevBridge;
 import dev.agentcraft.client.dev.Fields;
 import dev.agentcraft.client.foreman.Foreman;
+import dev.agentcraft.client.hq.HqSession;
 import dev.agentcraft.client.hud.Keys;
 import dev.agentcraft.client.ui.Guard;
 import java.util.Map;
@@ -43,12 +44,12 @@ public final class ConsoleFeature {
 				return;
 			}
 			while (Keys.console.consumeClick()) {
-				if (mc.gui.screen() == null) {
+				if (mc.gui.screen() == null && HqSession.active()) {
 					open(null, true);
 				}
 			}
 			while (Keys.terminal.consumeClick()) {
-				if (mc.gui.screen() == null && lookingAtTerminal(mc)) {
+				if (mc.gui.screen() == null && HqSession.active() && lookingAtTerminal(mc)) {
 					open(null, false);
 				}
 			}

@@ -12,6 +12,7 @@ import dev.agentcraft.client.foreman.ForemanListener;
 import dev.agentcraft.client.foreman.ForemanState;
 import dev.agentcraft.client.foreman.Protocol.Decision;
 import dev.agentcraft.client.foreman.Protocol.DecisionKind;
+import dev.agentcraft.client.hq.HqSession;
 import dev.agentcraft.client.hud.Keys;
 import dev.agentcraft.client.ui.Guard;
 import dev.agentcraft.client.world.ServerTasks;
@@ -59,7 +60,7 @@ public final class DecisionsFeature {
 				return;
 			}
 			while (Keys.decisions.consumeClick()) {
-				if (mc.gui.screen() == null) {
+				if (mc.gui.screen() == null && HqSession.active()) {
 					openQueue(null, null);
 				}
 			}

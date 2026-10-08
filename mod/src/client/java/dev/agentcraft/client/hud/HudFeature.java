@@ -25,9 +25,9 @@ public final class HudFeature {
 
 	public static void init() {
 		Keys.ensureRegistered();
-		HudElementRegistry.addLast(AgentCraft.id("hud/connection"), GuardedHud.of("hud.connection", new ConnectionBanner()));
-		HudElementRegistry.addLast(AgentCraft.id("hud/goal"), GuardedHud.of("hud.goal", new GoalBar()));
-		HudElementRegistry.addLast(AgentCraft.id("hud/toasts"), GuardedHud.of("hud.toasts", new Toasts()));
+		HudElementRegistry.addLast(AgentCraft.id("hud/connection"), GuardedHud.atHq("hud.connection", new ConnectionBanner()));
+		HudElementRegistry.addLast(AgentCraft.id("hud/goal"), GuardedHud.atHq("hud.goal", new GoalBar()));
+		HudElementRegistry.addLast(AgentCraft.id("hud/toasts"), GuardedHud.atHq("hud.toasts", new Toasts()));
 		Toasts.init();
 		HudSounds.init();
 		// QA: the vanilla key binds screen, to check the AgentCraft category (dev.screen {open:"keybinds"})

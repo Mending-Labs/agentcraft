@@ -6,6 +6,7 @@ import dev.agentcraft.client.foreman.ForemanState;
 import dev.agentcraft.client.foreman.Protocol;
 import dev.agentcraft.client.foreman.Protocol.Agent;
 import dev.agentcraft.client.foreman.Protocol.AgentState;
+import dev.agentcraft.client.hq.HqSession;
 import dev.agentcraft.layout.Anchor;
 import dev.agentcraft.layout.AnchorNames;
 import dev.agentcraft.layout.Anchors;
@@ -164,7 +165,8 @@ public final class AgentManager {
 		catchUpEntityTicks(mc, lvl);
 		ticks++;
 		ForemanState st = Foreman.state();
-		if (st == null || !st.hasData()) {
+		// agents live at the HQ only (they appeared in other servers' lobbies)
+		if (st == null || !st.hasData() || !HqSession.active()) {
 			removeAll();
 			return;
 		}

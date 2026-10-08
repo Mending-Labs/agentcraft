@@ -8,6 +8,7 @@ import dev.agentcraft.client.foreman.Protocol.Agent;
 import dev.agentcraft.client.foreman.Protocol.Decision;
 import dev.agentcraft.client.foreman.Protocol.Notify;
 import dev.agentcraft.client.foreman.Protocol.NotifyLevel;
+import dev.agentcraft.client.hq.HqSession;
 import dev.agentcraft.client.ui.Kit;
 import dev.agentcraft.client.ui.Panels;
 import dev.agentcraft.client.ui.TextUtil;
@@ -46,7 +47,9 @@ public final class Toasts implements HudElement {
 		Foreman.addListener(new ForemanListener() {
 			@Override
 			public void onNotify(Notify n) {
-				push(n);
+				if (HqSession.active()) {
+					push(n);
+				}
 			}
 
 			@Override

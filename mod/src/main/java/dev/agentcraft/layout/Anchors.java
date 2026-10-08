@@ -94,6 +94,14 @@ public final class Anchors {
 		AgentCraft.LOGGER.info("Published layout '{}' rev {} with {} anchors", withRev.name(), withRev.revision(), withRev.anchors().size());
 	}
 
+	/**
+	 * Client of a dedicated HQ server: the layout it announced ({@code HqHelloPayload}), or
+	 * {@link Layout#EMPTY} when leaving it. Never called where the HQ itself runs (singleplayer).
+	 */
+	public static void setRemote(Layout layout) {
+		set(layout);
+	}
+
 	private static void set(Layout layout) {
 		current = layout;
 		for (Consumer<Layout> l : LISTENERS) {
@@ -175,7 +183,7 @@ public final class Anchors {
 		return Math.round(v * 1000.0) / 1000.0;
 	}
 
-	static Layout fromJson(JsonObject root) {
+	public static Layout fromJson(JsonObject root) {
 		Map<String, Anchor> map = new LinkedHashMap<>();
 		JsonObject anchors = root.has("anchors") ? root.getAsJsonObject("anchors") : new JsonObject();
 		for (var e : anchors.entrySet()) {

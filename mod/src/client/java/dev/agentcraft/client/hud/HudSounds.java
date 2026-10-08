@@ -8,6 +8,7 @@ import dev.agentcraft.client.foreman.Protocol.Goal;
 import dev.agentcraft.client.foreman.Protocol.GoalStatus;
 import dev.agentcraft.client.foreman.Protocol.Task;
 import dev.agentcraft.client.foreman.Protocol.TaskStatus;
+import dev.agentcraft.client.hq.HqSession;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.sounds.SoundEvents;
@@ -104,6 +105,9 @@ public final class HudSounds {
 	}
 
 	private static void play(boolean bell, boolean big) {
+		if (!HqSession.active()) {
+			return; // AgentCraft is silent away from the HQ
+		}
 		if (!enabled()) {
 			return;
 		}

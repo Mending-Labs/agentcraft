@@ -91,7 +91,7 @@ public final class HqFeature {
 		return null;
 	}
 
-	private static boolean anyWorld() {
+	public static boolean anyWorld() {
 		String v = System.getProperty("agentcraft.hq.anyworld");
 		if (v == null) {
 			v = System.getenv("AGENTCRAFT_HQ_ANYWORLD");
