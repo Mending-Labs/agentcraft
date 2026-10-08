@@ -27,7 +27,7 @@ import java.util.Map;
 import java.util.Objects;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
-import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.CopperBulbBlock;
 import net.minecraft.world.level.block.entity.BlockEntity;
@@ -36,8 +36,9 @@ import net.minecraft.world.level.chunk.LevelChunk;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Drives the HQ's world blocks from the Foreman state (client thread computes, the integrated
- * server applies, see {@link ServerTasks}):
+ * Drives the HQ's world blocks from the Foreman state (client thread computes; the integrated
+ * server applies in singleplayer, this client's view of a dedicated HQ server otherwise, see
+ * {@link ServerTasks}):
  * <ul>
  *   <li>status lamps by binding: {@code agent:<id>} (the agent's status family, the same one its
  *       nameplate shows: an idle/done agent with a decision waiting on you is {@code waiting}; off
@@ -84,7 +85,8 @@ public final class HqWorldDriver {
 	}
 
 	static void tick(Minecraft mc) {
-		if (mc.level == null || mc.getSingleplayerServer() == null) {
+		// the singleplayer HQ world, or a dedicated HQ server (applied in this client's view)
+		if (mc.level == null || !HqSession.active()) {
 			return;
 		}
 		ForemanState st = Foreman.state();
@@ -243,8 +245,8 @@ public final class HqWorldDriver {
 		};
 	}
 
-	/** Server thread: set every bound station block in the HQ region to its wanted state. */
-	static int apply(ServerLevel level, Wanted w, Anchors.Bounds b, List<BlockPos> podiumSignals, List<BlockPos> mergeSignals) {
+	/** Server thread (singleplayer) or client thread (dedicated HQ): set every bound station block in the HQ region to its wanted state. */
+	static int apply(Level level, Wanted w, Anchors.Bounds b, List<BlockPos> podiumSignals, List<BlockPos> mergeSignals) {
 		List<BlockPos> pos = new ArrayList<>();
 		List<BlockState> to = new ArrayList<>();
 		int x0 = (b.minX() - MARGIN) >> 4;
@@ -280,7 +282,7 @@ public final class HqWorldDriver {
 	}
 
 	/** Copper bulbs around the given station anchors follow {@code on} (no redstone involved). */
-	private static void signals(ServerLevel level, List<BlockPos> centers, boolean on, List<BlockPos> pos, List<BlockState> to) {
+	private static void signals(Level level, List<BlockPos> centers, boolean on, List<BlockPos> pos, List<BlockState> to) {
 		BlockPos.MutableBlockPos m = new BlockPos.MutableBlockPos();
 		for (BlockPos c : centers) {
 			for (int dx = -SIGNAL_REACH; dx <= SIGNAL_REACH; dx++) {
