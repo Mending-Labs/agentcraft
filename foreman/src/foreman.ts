@@ -144,6 +144,10 @@ export class Foreman {
 
   private emit(m: Outbound): void {
     if (m.type === 'task.upsert' && m.task.goalId) this.scheduleGoalUpdate(m.task.goalId);
+    if (m.type === 'task.upsert' && (m.task.status === 'cancelled' || m.task.status === 'done')) {
+      const id = m.task.id;
+      queueMicrotask(() => this.releaseStuckAgents(id));
+    }
     for (const l of this.listeners) {
       try {
         l(m);
@@ -518,6 +522,20 @@ export class Foreman {
     return wt?.status === 'merged' || (task?.status === 'done' && wt?.status !== 'active');
   }
 
+  /**
+   * Agents left blocked or in error on a task that is now closed (e.g. the lead cancelled the
+   * blocked task, or a restart): back to the lounge. A running turn is the team's to unwind.
+   */
+  private releaseStuckAgents(taskId?: string): void {
+    for (const a of this.agents()) {
+      if (!a.taskId || (taskId && a.taskId !== taskId)) continue;
+      if (a.state !== 'blocked' && a.state !== 'error') continue;
+      const t = this.tasks.get(a.taskId);
+      if (t && t.status !== 'cancelled' && t.status !== 'done') continue;
+      this.setAgent(a.id, { state: 'idle', station: 'lounge', activity: t?.status === 'done' ? 'idle' : 'task cancelled', taskId: null, worktree: null });
+    }
+  }
+
   /** Merge decisions left open for work that was merged meanwhile (e.g. before a restart): closed. */
   private closeMootMerges(): void {
     for (const d of this.decisions.open()) {
@@ -836,6 +854,7 @@ export class Foreman {
     }
     this.repos.startPolling(this.config.repoPollMs);
     this.closeMootMerges();
+    this.releaseStuckAgents();
     await backend.start();
   }
 
