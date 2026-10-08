@@ -1051,7 +1051,9 @@ public class ConsoleScreen extends Screen {
 		if (first.size() > 1) {
 			String rest = text.substring(Math.min(text.length(), first.get(0).length())).stripLeading();
 			List<String> more = TextUtil.wrapPlain(font, rest, textW);
-			int max = l.local() ? 12 : 4;
+			// a message (an agent talking to you, or you to it) is shown in full; other lines stay short
+			boolean message = l.kind() == FeedKind.MESSAGE || l.kind() == FeedKind.USER;
+			int max = l.local() ? 12 : message ? 80 : 4;
 			for (int i = 0; i < Math.min(max, more.size()); i++) {
 				String seg = more.get(i);
 				if (i == max - 1 && more.size() > max) {

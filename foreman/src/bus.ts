@@ -12,7 +12,8 @@ export class MessageBus {
 
   /** Append to the activity feed (persisted + broadcast). */
   feed(kind: FeedKind, text: string, extra: { agentId?: string; to?: string } = {}): FeedItem {
-    const item: FeedItem = { ts: this.ctx.now(), kind, text: truncate(text, 400) };
+    // messages between agents and the user are read in full; other feed lines stay short
+    const item: FeedItem = { ts: this.ctx.now(), kind, text: truncate(text, kind === 'message' || kind === 'user' ? 4000 : 400) };
     if (extra.agentId) item.agentId = extra.agentId;
     if (extra.to) item.to = extra.to;
     this.ctx.store.pushFeed(item);
