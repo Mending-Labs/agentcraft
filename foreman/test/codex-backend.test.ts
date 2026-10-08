@@ -61,6 +61,18 @@ const readLog = (file: string): LogLine[] =>
         .map((l) => JSON.parse(l) as LogLine)
     : [];
 
+/**
+ * A Codex worker's writable roots: objects, its own worktree git dir, temp, and only its own
+ * branches' refs and reflogs. Never the shared .git (config, hooks, other branches).
+ */
+const gitRoots = (repo: string, worktreeId: string, agent: string) => [
+  path.join(repo, '.git', 'objects'),
+  path.join(repo, '.git', 'worktrees', worktreeId),
+  os.tmpdir(),
+  path.join(repo, '.git', 'refs', 'heads', 'agentcraft', agent),
+  path.join(repo, '.git', 'logs', 'refs', 'heads', 'agentcraft', agent),
+];
+
 let h: Harness;
 let home: string;
 let repoPath: string;
@@ -151,7 +163,7 @@ describe('codex engine (fake app-server)', () => {
     expect(set.GIT_AUTHOR_NAME).toBe('AgentCraft Kit');
     const gitCfg = Object.fromEntries(Array.from({ length: Number(set.GIT_CONFIG_COUNT) }, (_x, i) => [set[`GIT_CONFIG_KEY_${i}`], set[`GIT_CONFIG_VALUE_${i}`]]));
     expect(gitCfg['protocol.allow']).toBe('never');
-    expect(worker.config.sandbox_workspace_write.writable_roots).toEqual([path.join(repoPath, '.git'), path.join(repoPath, '.git', 'worktrees', 'kit-t1'), os.tmpdir()]);
+    expect(worker.config.sandbox_workspace_write.writable_roots).toEqual(gitRoots(repoPath, 'kit-t1', 'kit'));
     expect(lead.config.sandbox_workspace_write.writable_roots).toEqual([]);
     expect(worker.developerInstructions).toContain('Working in AgentCraft (Codex)');
     expect(worker.developerInstructions.includes('use npm.cmd and npx.cmd')).toBe(process.platform === 'win32');
@@ -195,9 +207,7 @@ describe('codex engine (fake app-server)', () => {
     const workers = readLog(logFile).filter((l) => (l.method === 'thread/start' || l.method === 'thread/resume') && l.params.sandbox === 'workspace-write');
     expect(workers.some((l) => l.method === 'thread/resume')).toBe(true);
     for (const worker of workers) {
-      expect(worker.params.config.sandbox_workspace_write.writable_roots).toEqual([
-        path.join(repoPath, '.git'), path.join(repoPath, '.git', 'worktrees', 'kit-t1'), os.tmpdir(),
-      ]);
+      expect(worker.params.config.sandbox_workspace_write.writable_roots).toEqual(gitRoots(repoPath, 'kit-t1', 'kit'));
     }
   });
 
@@ -214,9 +224,7 @@ describe('codex engine (fake app-server)', () => {
       const engine = new CodexEngine(isolated.fm, isolated.cfg.codex);
       const backend = new TeamBackend(isolated.fm, isolated.cfg.claude, { name: 'codex', engines: { lead: engine, worker: engine } });
       const job = { kind: 'work' as const, agentId: 'kit', taskId: task.id, sessionKey: 'kit:test', prompt: '' };
-      expect(await backend['writableRoots']('worker', job)).toEqual([
-        path.join(isolatedRepo, '.git'), path.join(isolatedRepo, '.git', 'worktrees', own.id), os.tmpdir(),
-      ]);
+      expect(await backend['writableRoots']('worker', job)).toEqual(gitRoots(isolatedRepo, own.id, 'kit'));
       const link = path.join(own.path, '.git');
       const original = fs.readFileSync(link, 'utf8');
       const overwrite = (value: string) => {

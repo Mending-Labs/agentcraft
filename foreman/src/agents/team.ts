@@ -20,6 +20,7 @@
 // the worktree busy on Windows and could still write to it) - and the old worktree's work is
 // committed on its branch. The next worker's worktree then starts from that branch.
 import type { ChildProcess } from 'node:child_process';
+import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import type { ClaudeConfig } from '../config.js';
@@ -702,8 +703,17 @@ export class TeamBackend implements Backend {
   }
 
   /**
-   * Where a worker may write besides its worktree: the git dir its commits go to, and the temp dir
-   * (scratch files and test runs; the policy allows it too).
+   * Where a sandboxed worker (Codex) may write besides its worktree: exactly what committing and
+   * merging on its own branch needs, and the temp dir (scratch files and test runs; the policy
+   * allows it too). Never the shared git dir as a whole: its config and hooks would let a worker
+   * run code in the user's own git, outside every sandbox, and its refs would let it move the
+   * user's branches. Verified against the real Codex Windows sandbox: commit and `git merge`
+   * work; writing .git/config, .git/hooks or refs/heads/main is denied.
+   *  - objects/                        new commits, trees, blobs (content-addressed, harmless)
+   *  - refs/heads/<branch dir>/        this agent's branches only (agentcraft/<agent>/...)
+   *  - logs/refs/heads/<branch dir>/   their reflogs
+   *  - the worktree's own git dir      its HEAD, index, ORIG_HEAD, MERGE_HEAD (Codex protects the
+   *                                    .git pointer's target unless it is granted exactly)
    */
   private async writableRoots(role: Role, job: Job): Promise<string[]> {
     if (role !== 'worker' || !job.taskId) return [];
@@ -712,9 +722,15 @@ export class TeamBackend implements Backend {
     const worktree = this.fm.repos.requireWorktree(repo.id, t.worktree!);
     const verified = await this.fm.repos.verifyWorktreeGit(repo, worktree);
     if (!verified.ok) throw new Error(`Cannot grant worktree Git access: ${verified.reason}`);
-    // Codex protects the resolved target of a worktree's .git pointer unless that exact
-    // directory is explicitly writable. Granting only its parent common directory is not enough.
-    return [...new Set([verified.commonDir, verified.gitDir, os.tmpdir()])];
+    const roots = [path.join(verified.commonDir, 'objects'), verified.gitDir, os.tmpdir()];
+    const branchDir = path.posix.dirname(worktree.branch);
+    if (branchDir !== '.' && !branchDir.split('/').includes('..')) {
+      for (const d of [path.join(verified.commonDir, 'refs', 'heads', ...branchDir.split('/')), path.join(verified.commonDir, 'logs', 'refs', 'heads', ...branchDir.split('/'))]) {
+        fs.mkdirSync(d, { recursive: true });
+        roots.push(d);
+      }
+    }
+    return [...new Set(roots)];
   }
 
   private async runJob(job: Job): Promise<void> {

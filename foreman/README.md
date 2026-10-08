@@ -131,9 +131,12 @@ restarts) runs each agent turn through an engine, chosen per agent:
   desktop runtime executables. Agent shell commands retain the original `LOCALAPPDATA`; the
   sandbox, approval policy, login and saved Codex threads are unchanged.
 
-  Worker Git access includes both the shared Git directory and the exact worktree metadata
-  directory, validated against the registered repository before every turn. Codex otherwise
-  protects the `.git` pointer's target even when its parent directory is writable. On Windows,
+  A worker's sandbox can write exactly what committing and merging on its own branch needs: the
+  shared `objects/`, its own branches' refs and reflogs (`refs/heads/agentcraft/<agent>/`), and its
+  worktree's own git dir (Codex protects the `.git` pointer's target unless it is granted exactly),
+  validated against the registered repository before every turn. Never the shared `.git` as a
+  whole: its `config` and `hooks` would let a worker run code in your own git, outside any sandbox,
+  and its refs would let it move your branches. On Windows,
   worktrees run with the older grant may retain Codex deny ACLs; recreating the worktree after
   saving its changes clears those stale permissions. Do not reset permissions on the whole repo.
   Windows agents are also told to use `npm.cmd` / `npx.cmd`: their PowerShell launchers can fail
