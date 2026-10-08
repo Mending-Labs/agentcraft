@@ -1088,7 +1088,12 @@ export class TeamBackend implements Backend {
     const mine = this.fm.bus.inbox(id).filter((m) => m.from === 'user' && (m.to === id || (to === 'all' && m.to === 'all')));
     const body = mine.length ? mine.map((m) => m.text).join('\n\n') : text;
     const consume = () => this.fm.bus.markRead(id, mine.map((m) => m.id));
-    const prompt = `Message from ${userName()}: ${body}\n\n${note ? `${note}\n\n` : ''}Respond briefly with send_message(to "user") and act on it if needed (lead: create or update tasks; worker: adjust your work).`;
+    // the lead: a reply in the conversation about the current goal, not a new plan
+    const act =
+      id === LEAD
+        ? `This continues the current goal and your conversation with ${userName()}. If it is a question or part of a discussion, answer it with send_message(to "user") (inspect files read-only first if needed): do not create tasks for that. Create or update tasks only when files must change. If it is clearly a new, unrelated objective, say so and suggest ${userName()} start it with /goal.`
+        : 'Respond briefly with send_message(to "user") and adjust your work if needed.';
+    const prompt = `Message from ${userName()}: ${body}\n\n${note ? `${note}\n\n` : ''}${act}`;
     if (id === LEAD) {
       const goal = this.fm.currentGoal();
       if (!goal) {

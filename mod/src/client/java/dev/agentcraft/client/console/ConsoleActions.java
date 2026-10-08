@@ -2,6 +2,7 @@ package dev.agentcraft.client.console;
 
 import dev.agentcraft.client.console.ConsoleCommands.AgentAction;
 import dev.agentcraft.client.console.ConsoleCommands.Auto;
+import dev.agentcraft.client.console.ConsoleCommands.FollowUp;
 import dev.agentcraft.client.console.ConsoleCommands.WorkspaceCmd;
 import dev.agentcraft.client.console.ConsoleCommands.Answer;
 import dev.agentcraft.client.console.ConsoleCommands.Clear;
@@ -208,6 +209,8 @@ public final class ConsoleActions {
 				return (gid != null ? Tr.t("console.goal_sent_id", gid) : Tr.t("console.goal_sent")) + (g.repoId() != null && s.repos().size() > 1
 					? " \u2192 " + ConsoleCommands.repoName(g.repoId(), s) : "") + " " + UiBits.CHECK;
 			}, Tr.t("console.goal_sending") + "\u2026");
+			case FollowUp f -> track(Foreman.message("marlow", f.text()), raw, restore,
+				ack -> Tr.t("console.followup_sent") + " " + UiBits.CHECK, Tr.t("console.followup_sending") + "…");
 			case Message m -> track(Foreman.message(m.to(), m.text()), raw, restore,
 				ack -> Tr.t("console.message_sent", ConsoleCommands.displayName(m.to(), s)) + " " + UiBits.CHECK,
 				Tr.t("console.message_sending", ConsoleCommands.displayName(m.to(), s)) + "\u2026");

@@ -42,7 +42,7 @@ public final class ConsoleCommands {
 	// ------------------------------------------------------------------ intents
 
 	public sealed interface Intent permits Goal, Message, Answer, RepoAdd, Repos, AgentAction, TaskAction, ShowDiff, Status, Help, Decide, Clear,
-		Sound, Auto, WorkspaceCmd, Invalid, Empty {
+		Sound, Auto, WorkspaceCmd, FollowUp, Invalid, Empty {
 	}
 
 	/** {@code repoId} null = the Foreman's default; {@code choices} non-empty = ask which repo first. */
@@ -51,6 +51,10 @@ public final class ConsoleCommands {
 
 	/** {@code to} = agent id or "all". */
 	public record Message(String to, String text) implements Intent {
+	}
+
+	/** Plain text while a goal is going on: a follow-up to the lead on that goal ({@code /goal} starts a new one). */
+	public record FollowUp(String text, String goalText) implements Intent {
 	}
 
 	public record Answer(Decision decision, @Nullable String option, @Nullable String text) implements Intent {
@@ -112,6 +116,7 @@ public final class ConsoleCommands {
 		String option = Tr.t("console.usage_option");
 		String text = Tr.t("console.usage_text");
 		return List.of(
+			new Command("goal", "/goal <" + text + ">", Tr.t("console.cmd_goal_help")),
 			new Command("answer", "/answer [d4] <n|" + option + "> [" + text + "]", Tr.t("console.cmd_answer_help")),
 			new Command("decide", "/decide", Tr.t("console.cmd_decide_help")),
 			new Command("diff", "/diff [worktree|@agent]", Tr.t("console.cmd_diff_help")),
@@ -147,7 +152,20 @@ public final class ConsoleCommands {
 		if (trimmed.startsWith("/")) {
 			return parseCommand(trimmed, s);
 		}
-		return goal(trimmed, s);
+		return followUpOrGoal(trimmed, s);
+	}
+
+	/** A goal counts as the current conversation while it runs and for this long after it ended. */
+	private static final long FOLLOW_UP_MS = 30 * 60 * 1000L;
+
+	/** Plain text: the lead's follow-up on the current goal if there is one, else a new goal. */
+	private static Intent followUpOrGoal(String text, ForemanState s) {
+		Protocol.Goal g = s.goal();
+		if (g != null && (g.status() == Protocol.GoalStatus.PLANNING || g.status() == Protocol.GoalStatus.ACTIVE
+			|| System.currentTimeMillis() - g.updatedAt() < FOLLOW_UP_MS)) {
+			return new FollowUp(text, g.text());
+		}
+		return goal(text, s);
 	}
 
 	private static Intent goal(String text, ForemanState s) {
@@ -300,7 +318,7 @@ public final class ConsoleCommands {
 			case "sound", "sounds", "mute" -> parseSound(cmd, args);
 			case "auto" -> parseAuto(args);
 			case "workspace", "workspaces", "ws" -> parseWorkspace(rest, args);
-			case "goal" -> rest.isEmpty() ? new Invalid(Tr.t("console.err_goal_after")) : goal(rest, s);
+			case "goal", "new", "nouveau", "nouvel" -> rest.isEmpty() ? new Invalid(Tr.t("console.err_goal_after")) : goal(rest, s);
 			default -> new Invalid(Tr.t("console.err_unknown_command", cmd));
 		};
 	}
@@ -629,6 +647,7 @@ public final class ConsoleCommands {
 	public static @Nullable String describe(Intent in, ForemanState s) {
 		return switch (in) {
 			case Goal g -> g.repoId() == null ? Tr.t("console.desc_new_goal") : Tr.t("console.desc_new_goal_repo", repoName(g.repoId(), s));
+			case FollowUp f -> Tr.t("console.desc_followup", (f.goalText().length() > 36 ? f.goalText().substring(0, 35) + "…" : f.goalText()));
 			case Message m -> m.to().equals("all") ? Tr.t("console.desc_message_everyone") : Tr.t("console.desc_message", displayName(m.to(), s));
 			case Answer a -> Tr.t("console.desc_answer", a.decision().id(), a.option() != null ? a.option() : Tr.t("console.desc_free_text"));
 			case RepoAdd r -> Tr.t("console.desc_add_repo");

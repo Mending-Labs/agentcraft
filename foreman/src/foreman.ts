@@ -580,6 +580,8 @@ export class Foreman {
         return { goalId: (await this.submitGoal(msg.text, msg.repoId)).id };
       case 'user.message': {
         const { to, text } = this.routeUserMessage(msg.to, msg.text);
+        // a folder named in a follow-up to the lead becomes a workspace, as in a goal
+        if (to === 'marlow' || to === 'all') this.workspacesFromGoal(text);
         this.bus.send('user', to, text);
         this.backend?.onUserMessage(to, text);
         return { to };
