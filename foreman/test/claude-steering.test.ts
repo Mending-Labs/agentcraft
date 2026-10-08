@@ -41,6 +41,9 @@ function fake(calls: Call[], worker: Record<string, WorkerScript>) {
         if (p.startsWith('New goal')) await callTool(options, 'create_task', { title: 'Add a version flag', description: 'x', assignee: 'kit' });
         const review = /Review request: (t\d+)/.exec(p)?.[1];
         if (review) await callTool(options, 'request_merge', { task_id: review, summary: 'ok' });
+        // a worker is blocked: the lead unblocks it with guidance
+        const blocked = /is blocked on (t\d+)/.exec(p)?.[1];
+        if (blocked) await callTool(options, 'update_task', { task_id: blocked, status: 'doing', summary: 'Use the --version flag of the CLI' });
         yield ok(sid(1));
         return;
       }
@@ -226,6 +229,32 @@ describe('claude backend steering (fake SDK)', () => {
     await fm.agentAction('kit', 'resume');
     await until(() => fm.decisions.open().some((d) => d.kind === 'merge' && d.taskId === 't1'), 60_000);
     expect(pausedPrompt).toMatch(/withdrawn/);
+    await fm.close();
+  });
+
+  it('a blocked worker goes to the lead, who unblocks it; the user hears only when it keeps blocking', async () => {
+    const calls: Call[] = [];
+    let kitTurns = 0;
+    const kit: WorkerScript = async function* (o) {
+      kitTurns++;
+      yield init(sid(5));
+      await callTool(o, 'update_task', { task_id: 't1', status: 'blocked', blocked_reason: 'which flag name?' });
+      yield ok(sid(5));
+    };
+    const { h } = await boot('kit', calls, { kit });
+    const fm = h.fm;
+    await fm.submitGoal('version flag');
+    // 1st block: the lead is woken with the reason, answers, and Kit resumes with the guidance
+    await until(() => calls.some((c) => c.agent === 'kit' && /Marlow looked at why t1 was blocked:\nUse the --version flag/.test(c.prompt)), 60_000);
+    const leadPrompt = calls.find((c) => c.agent === 'marlow' && /Kit is blocked on t1/.test(c.prompt))!.prompt;
+    expect(leadPrompt).toMatch(/which flag name\?/);
+    expect(leadPrompt).toMatch(/Use ask_user only if it genuinely needs/);
+    // ... and it keeps blocking: after the lead's 2nd attempt, the 3rd block reaches the user
+    await until(() => h.events.some((e) => e.type === 'notify' && e.level === 'warn' && /Marlow could not unblock it/.test(e.text)), 60_000);
+    const warns = h.events.filter((e) => e.type === 'notify' && e.level === 'warn' && /t1/.test(e.text));
+    expect(warns).toHaveLength(1);
+    expect(calls.filter((c) => c.agent === 'marlow' && /is blocked on t1/.test(c.prompt))).toHaveLength(2);
+    expect(kitTurns).toBe(3);
     await fm.close();
   });
 

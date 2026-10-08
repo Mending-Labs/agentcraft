@@ -21,6 +21,8 @@ export interface ToolHooks {
   onReview(agentId: string, taskId: string): void;
   /** lead asked for changes on a task (status -> doing) */
   onChangesRequested(taskId: string, feedback: string): void;
+  /** lead put a blocked task back to doing: the worker resumes with the lead's guidance */
+  onUnblocked?(taskId: string, guidance: string): void;
   /** a task was created (scheduler tick) */
   onTasksChanged(): void;
   /** lead requested a merge (decision created) */
@@ -238,6 +240,7 @@ export function agentTools(fm: Foreman, agentId: string, role: 'lead' | 'worker'
             fm.bus.feed('task', `${fm.nameOf(agentId)}: ${t.id} ${prev} -> ${a.status}`, { agentId });
             if (a.status === 'review' && role === 'worker') hooks.onReview(agentId, t.id);
             if (a.status === 'doing' && prev === 'review' && role === 'lead') hooks.onChangesRequested(t.id, a.summary ?? 'see review comments');
+            if (a.status === 'doing' && prev === 'blocked' && role === 'lead') hooks.onUnblocked?.(t.id, a.summary ?? '');
           }
           hooks.onTasksChanged();
           return withInbox(`Updated ${t.id}: ${fm.tasks.get(t.id)!.status}.`);

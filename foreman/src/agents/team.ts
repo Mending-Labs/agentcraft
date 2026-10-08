@@ -185,6 +185,11 @@ export class TeamBackend implements Backend {
         /* handled after the worker's turn ends (CI then review) */
       },
       onChangesRequested: (taskId, feedback) => this.sendBackToWorker(taskId, `Marlow reviewed your work on ${taskId} and asks for changes:\n${feedback}\n\nMake the changes, re-run the tests, then update_task("${taskId}", status "review", summary).`),
+      onUnblocked: (taskId, guidance) =>
+        this.sendBackToWorker(
+          taskId,
+          `Marlow looked at why ${taskId} was blocked:\n${guidance || '(see his messages)'}\n\nContinue the task. If you are still stuck, set it blocked again with a precise blocked_reason.`,
+        ),
       onTasksChanged: () => this.tick(),
       onMergeRequested: (taskId) => this.fm.log.info(`merge decision opened for ${taskId}`),
       onWaiting: (agentId, waiting) => {
@@ -993,16 +998,50 @@ export class TeamBackend implements Backend {
         // a failed turn is an error (red); a worker that gave up is blocked
         this.fm.setAgent(job.agentId, failed ? { state: 'error', station: 'desk', activity: `${t.id}: ${this.failure(stats)}` } : { state: 'blocked', station: 'desk', activity: `${t.id} blocked` });
         this.fm.bus.send(job.agentId, LEAD, `${t.id} is blocked: ${this.fm.tasks.get(t.id)?.blockedReason}`);
-        this.fm.notify('warn', `${this.fm.nameOf(job.agentId)}: ${t.id} ${failed ? 'failed' : 'is blocked'} (${this.fm.tasks.get(t.id)?.blockedReason ?? ''}) - /task ${t.id} retry when ready`);
+        this.escalateBlocked(t.id, job.agentId, failed);
       }
       return;
     }
     if (t.status === 'blocked') {
       this.fm.setAgent(job.agentId, { state: 'blocked', station: 'desk', activity: `${t.id} blocked` });
-      this.fm.notify('warn', `${this.fm.nameOf(job.agentId)} is blocked on ${t.id}: ${t.blockedReason ?? ''}`);
+      this.escalateBlocked(t.id, job.agentId, false);
       return;
     }
     this.fm.setAgent(job.agentId, { state: 'idle', station: 'lounge', activity: 'idle' });
+  }
+
+  /** how many times each task went to the lead as blocked (a third time reaches the user) */
+  private blockedEscalations = new Map<string, number>();
+
+  /**
+   * A blocked worker is the lead's problem first: the lead is woken to unblock it (answer, rework,
+   * reassign, cancel) and asks the user only for what is genuinely theirs. The user hears about it
+   * only when the lead is off shift, there is no goal, or the same task blocks a third time.
+   */
+  private escalateBlocked(taskId: string, agentId: string, failed: boolean): void {
+    const t = this.fm.tasks.get(taskId);
+    if (!t) return;
+    const name = this.fm.nameOf(agentId);
+    const reason = t.blockedReason ?? '';
+    const n = (this.blockedEscalations.get(t.id) ?? 0) + 1;
+    this.blockedEscalations.set(t.id, n);
+    const goal = t.goalId ? this.fm.goal(t.goalId) : this.fm.currentGoal();
+    if (n > 2 || !goal || this.isStopped(LEAD)) {
+      this.fm.notify('warn', `${name}: ${t.id} ${failed ? 'failed' : 'is blocked'}${n > 2 ? ' again, Marlow could not unblock it' : ''} (${reason}) - /task ${t.id} retry when ready`);
+      return;
+    }
+    this.fm.bus.feed('task', `${name} is blocked on ${t.id}: Marlow takes it (${truncate(reason, 120)})`, { agentId });
+    const prompt = [
+      `${name} is blocked on ${t.id} "${t.title}"${failed ? ' (their session failed)' : ''}: ${reason}`,
+      '',
+      'Resolve it yourself, now:',
+      `- information or a decision you can give: answer ${name} with send_message, then update_task("${t.id}", status "doing", summary: what to do) and they resume;`,
+      '- the task is wrong or too big: rewrite its description, or split it with create_task and cancel this one;',
+      '- they lack something (network, a tool, an access): reassign it (update_task assignee) or change the approach;',
+      '- a real dead end: cancel it and say why.',
+      `Use ask_user only if it genuinely needs ${userName()} (a product decision, credentials, something outside the team's reach). Do not leave it blocked.`,
+    ].join('\n');
+    this.enqueue({ kind: 'followup', agentId: LEAD, goalId: goal.id, sessionKey: `${LEAD}:${goal.id}`, prompt });
   }
 
   /** A worker finished a task: CI in the worktree, then lead review (or a merge decision). */
