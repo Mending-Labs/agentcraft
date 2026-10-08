@@ -5,6 +5,7 @@ import dev.agentcraft.client.foreman.Protocol.AgentState;
 import dev.agentcraft.layout.Anchor;
 import dev.agentcraft.layout.AnchorNames;
 import dev.agentcraft.layout.Anchors;
+import dev.agentcraft.net.AgentFrame;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.util.Mth;
@@ -754,6 +755,59 @@ public final class AgentLife {
 
 	public int age() {
 		return age;
+	}
+
+	// ---------------------------------------------------------------- shared HQ (one host, everyone sees the same)
+
+	/** This tick's simulation of the agent, for the other players of a shared HQ (host side). */
+	AgentFrame capture(float walkPosition, float walkSpeed) {
+		return new AgentFrame(e.agentId(), e.getX(), e.getY(), e.getZ(), e.yBodyRot, headYaw, headPitch, walkPosition, walkSpeed,
+			cur.clone(), sit, (float) drop, typeW, talkW, exclaim, age, pageFlipStart, (byte) posture.ordinal(), (byte) e.view().pose.ordinal());
+	}
+
+	/**
+	 * Follower side: take the host's simulation of this tick as ours (posture channels, seat, the
+	 * animation clock...), then run only what is local to this game: the speech bubble and the
+	 * particles, which follow the agent's state the same way for everyone.
+	 */
+	void follow(AgentFrame f) {
+		System.arraycopy(cur, 0, prev, 0, N);
+		sitPrev = sit;
+		typeWPrev = typeW;
+		talkWPrev = talkW;
+		exclaimPrev = exclaim;
+		System.arraycopy(f.pose(), 0, cur, 0, Math.min(N, f.pose().length));
+		sit = f.sit();
+		drop = f.drop();
+		typeW = f.typeW();
+		talkW = f.talkW();
+		exclaim = f.exclaim();
+		age = f.age();
+		pageFlipStart = f.pageFlipStart();
+		Posture[] ps = Posture.values();
+		posture = f.posture() >= 0 && f.posture() < ps.length ? ps[f.posture()] : Posture.IDLE;
+		AgentPose[] vp = AgentPose.values();
+		e.view().pose = f.viewPose() >= 0 && f.viewPose() < vp.length ? vp[f.viewPose()] : AgentPose.STAND;
+		headYaw = f.headYaw();
+		headPitch = f.headPitch();
+		e.setHeadLook(headYaw, headPitch);
+		AgentView v = e.view();
+		boolean alive = !v.stale;
+		if (alive && v.active) {
+			if (!v.liveFamily.equals(lastFamily)) {
+				if (!lastFamily.isEmpty() && liveFor > 0) {
+					onFamily(lastFamily, v.liveFamily);
+				}
+				lastFamily = v.liveFamily;
+			}
+			liveFor++;
+		} else {
+			liveFor = 0;
+			lastFamily = "";
+		}
+		bubble.tick(age);
+		particlesTick(v, v.family, alive, e.view().pose == AgentPose.WALK);
+		particles.tick();
 	}
 
 	private net.minecraft.client.model.object.book.BookModel.@Nullable State bookState;

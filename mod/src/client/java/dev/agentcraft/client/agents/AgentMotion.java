@@ -119,6 +119,36 @@ public final class AgentMotion {
 	}
 
 	/**
+	 * Shared HQ, another player's game simulates this agent: stand where its frames put it, facing
+	 * {@code bodyYaw}, with no walk of our own (and no snap: the animations keep flowing).
+	 */
+	public void follow(float bodyYaw) {
+		target = null;
+		path.clear();
+		next = 0;
+		walking = false;
+		yaw = bodyYaw;
+		placed = true;
+		speed = 0;
+		delay = 0;
+		facing = null;
+	}
+
+	/**
+	 * This game just became the shared HQ's host and the agent already stands at {@code a} (where
+	 * the previous host left it): take it as reached, without moving or snapping.
+	 */
+	public void adoptAt(Anchor a) {
+		target = a;
+		path.clear();
+		next = 0;
+		walking = false;
+		placed = true;
+		speed = 0;
+		delay = 0;
+	}
+
+	/**
 	 * Walk to {@code a} along {@code route} (feet positions; first = current position). A null or
 	 * empty route means "no path": the caller should {@link #placeAt} instead.
 	 */

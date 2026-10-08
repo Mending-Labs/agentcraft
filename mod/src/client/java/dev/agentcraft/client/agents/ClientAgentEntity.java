@@ -1,8 +1,11 @@
 package dev.agentcraft.client.agents;
 
 import dev.agentcraft.AgentCraft;
+import dev.agentcraft.client.hq.HqSession;
+import dev.agentcraft.client.mixin.WalkAnimationStateAccessor;
 import dev.agentcraft.entity.AgentEntity;
 import dev.agentcraft.entity.ModEntities;
+import dev.agentcraft.net.AgentFrame;
 import net.minecraft.client.entity.ClientAvatarEntity;
 import net.minecraft.client.entity.ClientAvatarState;
 import net.minecraft.client.multiplayer.ClientLevel;
@@ -109,8 +112,25 @@ public class ClientAgentEntity extends AgentEntity implements ClientAvatarEntity
 		});
 	}
 
+	/** The host's latest frame of this agent (shared HQ, follower side), applied on the next advance. */
+	private @Nullable AgentFrame remote;
+
+	void setRemote(@Nullable AgentFrame f) {
+		remote = f;
+	}
+
+	/** This tick of the agent as the other players of a shared HQ should see it (host side). */
+	AgentFrame frame() {
+		return life.capture(walkAnimation.position(), walkAnimation.speed());
+	}
+
 	/** One tick of walking, animation and life. Runs once per client tick via {@link #gate}. */
 	private void advance() {
+		AgentFrame f = remote;
+		if (f != null && HqSession.follower()) {
+			follow(f);
+			return;
+		}
 		this.yBodyRotO = this.yBodyRot;
 		this.yHeadRotO = this.yHeadRot;
 		this.xRotO = this.getXRot();
@@ -130,6 +150,45 @@ public class ClientAgentEntity extends AgentEntity implements ClientAvatarEntity
 			life.tick(net.minecraft.client.Minecraft.getInstance());
 		} catch (Throwable e) {
 			AgentCraft.LOGGER.warn("agent life failed", e);
+		}
+		for (AgentHooks.Ticker t : AgentHooks.TICKERS) {
+			try {
+				t.tick(this);
+			} catch (Throwable e) {
+				AgentCraft.LOGGER.warn("agent ticker failed", e);
+			}
+		}
+	}
+
+	/**
+	 * Shared HQ, another player's game simulates the agents: be exactly what its frame says this
+	 * tick (vanilla interpolates between ticks, as for any entity the server moves), walk cycle
+	 * included, then run the local-only parts of life (speech bubble, particles) and the tickers.
+	 */
+	private void follow(AgentFrame f) {
+		this.yBodyRotO = this.yBodyRot;
+		this.yHeadRotO = this.yHeadRot;
+		this.xRotO = this.getXRot();
+		Vec3 before = position();
+		Vec3 after = new Vec3(f.x(), f.y(), f.z());
+		if (before.distanceToSqr(after) > 64) {
+			snapTo(after, f.bodyYaw()); // joined mid-walk or a teleport: no slide across the HQ
+		} else if (!after.equals(before)) {
+			this.setPos(after);
+		}
+		motion.follow(f.bodyYaw());
+		this.setYRot(f.bodyYaw());
+		this.yBodyRot = f.bodyYaw();
+		this.setDeltaMovement(after.subtract(before));
+		WalkAnimationStateAccessor walk = (WalkAnimationStateAccessor) this.walkAnimation;
+		walk.agentcraft$setSpeedOld(this.walkAnimation.speed());
+		walk.agentcraft$setSpeed(f.walkSpeed());
+		walk.agentcraft$setPosition(f.walkPosition());
+		avatarState.tick(position(), getDeltaMovement());
+		try {
+			life.follow(f);
+		} catch (Throwable e) {
+			AgentCraft.LOGGER.warn("agent life (follower) failed", e);
 		}
 		for (AgentHooks.Ticker t : AgentHooks.TICKERS) {
 			try {

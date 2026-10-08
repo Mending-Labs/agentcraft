@@ -9,7 +9,8 @@
 		"ClientLevelAccessor",
 		"EntityRenderDispatcherMixin",
 		"MinecraftMixin",
-		"RenderSystemMixin"
+		"RenderSystemMixin",
+		"WalkAnimationStateAccessor"
 	],
 	"injectors": {
 		"defaultRequire": 1

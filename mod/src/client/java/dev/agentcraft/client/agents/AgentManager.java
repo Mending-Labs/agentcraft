@@ -10,6 +10,8 @@ import dev.agentcraft.client.hq.HqSession;
 import dev.agentcraft.layout.Anchor;
 import dev.agentcraft.layout.AnchorNames;
 import dev.agentcraft.layout.Anchors;
+import dev.agentcraft.net.AgentFrame;
+import dev.agentcraft.net.AgentFramesPayload;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -18,6 +20,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
@@ -45,6 +48,11 @@ import org.jspecify.annotations.Nullable;
  * HQ (not spectating), to a free spot about two blocks from you and waits there facing you
  * ({@link #userSpot}). The derived "waiting on you" status ({@link AgentView#awaitingUser}) comes
  * from the open decisions.
+ *
+ * <p>A shared HQ on a dedicated server has one host ({@link HqSession#remoteHost()}): its game runs
+ * all of the above and sends every agent each tick; the other players' games show those frames
+ * ({@link #followTick}) instead of simulating, so everyone sees the same agents at the same pixel.
+ * When the host changes, the new one takes the agents over where they stand.
  */
 public final class AgentManager {
 	private static final AgentManager INSTANCE = new AgentManager();
@@ -69,6 +77,10 @@ public final class AgentManager {
 	private long layoutRevision = -1;
 	private int nextEntityId = -10_000;
 	private int pathFailures;
+	/** Shared HQ, follower side: the host's latest frame of each agent (client thread). */
+	private final Map<String, AgentFrame> frames = new LinkedHashMap<>();
+	/** The last tick showed the host's frames: this tick (as the host) takes the agents over in place. */
+	private boolean wasFollower;
 	private long ticks;
 
 	/** Where a waiting agent stands near the player, and where the player was when it was chosen. */
@@ -97,6 +109,19 @@ public final class AgentManager {
 
 	public int pathFailures() {
 		return pathFailures;
+	}
+
+	/** The host's agents for this tick (shared HQ, follower side; client thread). */
+	public void onFrames(AgentFramesPayload p) {
+		frames.clear();
+		for (AgentFrame f : p.frames()) {
+			frames.put(f.id(), f);
+		}
+	}
+
+	/** Leaving the HQ (or its server): forget the host's frames. */
+	public void clearFrames() {
+		frames.clear();
 	}
 
 	/**
@@ -170,6 +195,14 @@ public final class AgentManager {
 			removeAll();
 			return;
 		}
+		// shared HQ, another player's game runs the agents: show its frames (everyone sees the same)
+		if (HqSession.follower()) {
+			followTick(lvl, st);
+			wasFollower = true;
+			return;
+		}
+		boolean adopt = wasFollower;
+		wasFollower = false;
 		Anchors.Layout layout = Anchors.current();
 		boolean relayout = layout.revision() != layoutRevision;
 		layoutRevision = layout.revision();
@@ -223,13 +256,27 @@ public final class AgentManager {
 			}
 			Seats.Seat seat = pf == null ? null : seats.at(lvl, target, ticks, pf);
 			Anchor effective = seat != null ? seat.target() : target;
-			if (relayout) {
+			if (adopt && !e.motion().walking() && e.position().distanceToSqr(effective.pos()) < 0.3 * 0.3) {
+				// just became the host: the agent is already where the previous host left it
+				e.setRemote(null);
+				e.life().setSeat(seat);
+				e.motion().adoptAt(effective);
+			} else if (relayout) {
+				e.setRemote(null);
 				e.life().setSeat(seat);
 				place(e, effective);
 			} else if (!stale) {
+				e.setRemote(null);
 				retarget(lvl, layout, e, effective, seat);
 			}
 		}
+		dropAllBut(lvl, keep);
+		if (HqSession.remoteHost()) {
+			sendFrames();
+		}
+	}
+
+	private void dropAllBut(ClientLevel lvl, Set<String> keep) {
 		for (var it = entities.entrySet().iterator(); it.hasNext();) {
 			var en = it.next();
 			if (!keep.contains(en.getKey())) {
@@ -238,6 +285,57 @@ public final class AgentManager {
 				it.remove();
 			}
 		}
+	}
+
+	/** Host of a shared HQ: this tick's agents, for the server to pass on to the other players. */
+	private void sendFrames() {
+		if (!ClientPlayNetworking.canSend(AgentFramesPayload.TYPE)) {
+			return;
+		}
+		List<AgentFrame> out = new ArrayList<>();
+		for (ClientAgentEntity e : entities.values()) {
+			if (out.size() >= AgentFramesPayload.MAX_FRAMES) {
+				break;
+			}
+			out.add(e.frame());
+		}
+		ClientPlayNetworking.send(new AgentFramesPayload((int) ticks, out));
+	}
+
+	/**
+	 * Follower of a shared HQ: one agent entity per agent in the host's frames, each set to its
+	 * frame on its next tick ({@link ClientAgentEntity}); plates and states from our own Foreman
+	 * state, which is the same Foreman as the host's.
+	 */
+	private void followTick(ClientLevel lvl, ForemanState st) {
+		boolean stale = st.isStale();
+		updateAwaiting(st);
+		Set<String> keep = new HashSet<>();
+		for (AgentFrame f : frames.values()) {
+			Agent a = st.agents().get(f.id());
+			if (a == null) {
+				continue;
+			}
+			keep.add(f.id());
+			ClientAgentEntity e = entities.get(f.id());
+			if (e == null || e.isRemoved() || e.level() != lvl) {
+				e = new ClientAgentEntity(lvl, a.id(), AgentSkins.get(a.id(), a.skin()));
+				e.setId(nextEntityId--);
+				e.snapTo(new Vec3(f.x(), f.y(), f.z()), f.bodyYaw());
+				e.motion().follow(f.bodyYaw());
+				lvl.addEntity(e);
+				entities.put(a.id(), e);
+				byEntityId.put(e.getId(), e);
+				showRecentSay(st, e);
+			} else if (!e.getSkin().equals(AgentSkins.get(a.id(), a.skin()))) {
+				e.setSkin(AgentSkins.get(a.id(), a.skin()));
+			}
+			AgentView v = e.view();
+			v.update(a, stale, awaiting.get(a.id()), awaitingCounts.getOrDefault(a.id(), 0));
+			v.station = StationAssigner.stationKey(a);
+			e.setRemote(f);
+		}
+		dropAllBut(lvl, keep);
 	}
 
 	private static boolean followsPlayer(Agent a) {
