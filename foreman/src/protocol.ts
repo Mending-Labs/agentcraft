@@ -401,6 +401,7 @@ export const DiffRequestMsg = z.object({
 });
 export const RepoAddMsg = z.object({ ...envelope('repo.add'), path: z.string().min(1) });
 export const AutoSetMsg = z.object({ ...envelope('auto.set'), enabled: z.boolean() });
+export const WorkspaceAddMsg = z.object({ ...envelope('workspace.add'), path: z.string().min(1) });
 
 export const ClientMessage = z.discriminatedUnion('type', [
   HelloMsg,
@@ -412,6 +413,7 @@ export const ClientMessage = z.discriminatedUnion('type', [
   DiffRequestMsg,
   RepoAddMsg,
   AutoSetMsg,
+  WorkspaceAddMsg,
 ]);
 export type ClientMessage = z.infer<typeof ClientMessage>;
 
@@ -486,6 +488,7 @@ export const CLIENT_MESSAGES = {
   'diff.request': { schema: DiffRequestMsg, doc: 'Ask for the structured diff of a worktree. Answered with `diff` (same requestId).' },
   'repo.add': { schema: RepoAddMsg, doc: 'Register a local git repo (console: `/repo add <path>`).' },
   'auto.set': { schema: AutoSetMsg, doc: 'Turn auto mode on or off (console: `/auto on|off`); `foreman.status.auto` follows.' },
+  'workspace.add': { schema: WorkspaceAddMsg, doc: 'Add a folder the lead may reorganise (console: `/workspace add <path>`; a goal that names a folder adds it too). Kept across restarts; `foreman.status.workspaces` follows.' },
 } as const;
 
 export const ENTITY_SCHEMAS = {

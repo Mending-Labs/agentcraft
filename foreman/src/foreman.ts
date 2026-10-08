@@ -31,6 +31,8 @@ import { Store } from './store.js';
 import { TaskError, TaskGraph } from './taskgraph.js';
 import { setUserName, userName } from './user.js';
 import type { AutoConfig, AutoKind } from './auto.js';
+import { dirsInText, workspaceRefusal } from './workspace.js';
+import { isInsideOrEqual } from './util/fsx.js';
 import { truncate } from './util/text.js';
 
 export interface Backend {
@@ -107,7 +109,8 @@ export class Foreman {
     this.log.debug(`cast from ${source}`);
     setUserName(opts.config.userName);
     this.status = { version: FOREMAN_VERSION, backend: opts.config.backend, auth: opts.config.backend === 'sim' ? 'ok' : 'unknown', userName: userName() };
-    if (opts.config.workspaces?.length) this.status.workspaces = [...opts.config.workspaces];
+    const ws = this.workspaces();
+    if (ws.length) this.status.workspaces = ws;
     this.auto = { ...opts.config.auto };
     this.status.auto = this.auto.enabled;
     if (opts.config.backend === 'sim') this.status.message = 'Simulated team (sim backend)';
@@ -374,6 +377,43 @@ export class Foreman {
   }
 
   /** Answer a decision, run kind-specific side effects, then wake the waiting agent. */
+  // ---- workspaces ----------------------------------------------------------------------------
+
+  /** Folders the lead may reorganise: config.json "workspaces" plus those added while running. */
+  workspaces(): string[] {
+    const out: string[] = [];
+    for (const w of [...(this.config.workspaces ?? []), ...(this.store.data.workspaces ?? [])]) {
+      if (!out.some((o) => isInsideOrEqual(o, w) && isInsideOrEqual(w, o))) out.push(w);
+    }
+    return out;
+  }
+
+  /** Add a workspace (kept across restarts). Throws ClientError when the folder cannot be one. */
+  addWorkspace(dir: string): string {
+    const abs = path.resolve(dir);
+    const existing = this.workspaces().find((w) => isInsideOrEqual(abs, w) && isInsideOrEqual(w, abs));
+    if (existing) return existing;
+    const refusal = workspaceRefusal(abs, { repos: this.repos.list().map((r) => r.path), protectedPaths: [this.config.projectRoot, this.config.home] });
+    if (refusal) throw new ClientError(refusal);
+    (this.store.data.workspaces ??= []).push(abs);
+    this.store.markDirty();
+    this.setStatus({ workspaces: this.workspaces() });
+    this.bus.feed('system', `Workspace added: ${abs} (the lead may reorganise it through a plan)`);
+    return abs;
+  }
+
+  /** Folders named in a goal become workspaces (silently skipped when they cannot be one). */
+  private workspacesFromGoal(text: string): void {
+    for (const dir of dirsInText(text)) {
+      if (this.workspaces().some((w) => isInsideOrEqual(dir, w))) continue;
+      try {
+        this.addWorkspace(dir);
+      } catch {
+        /* a path inside a repo, a system folder...: not a workspace, the goal goes on as usual */
+      }
+    }
+  }
+
   // ---- auto mode -----------------------------------------------------------------------------
 
   /** Auto mode is on and covers this kind of decision. */
@@ -563,6 +603,8 @@ export class Foreman {
         }
         return undefined;
       }
+      case 'workspace.add':
+        return { path: this.addWorkspace(msg.path) };
       case 'auto.set':
         this.setAuto(msg.enabled);
         return { auto: this.auto.enabled };
@@ -579,6 +621,7 @@ export class Foreman {
     if (repoId && !repo) throw new ClientError(`no repo "${repoId}"`);
     if (!repo) throw new ClientError('no repo connected yet — add one with /repo add <path>');
     if (!this.backend) throw new ClientError('no backend running');
+    this.workspacesFromGoal(text);
     const goal = this.createGoal(text, repo.id);
     await this.backend.submitGoal(goal);
     return goal;

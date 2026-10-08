@@ -12,6 +12,7 @@
 // (a manual move breaks the two-way link between a main repo and its worktrees). Each applied plan
 // leaves a journal (with the reverse moves) in <dataDir>/workspace/.
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { ensureDir, isInsideOrEqual, writeJsonAtomic } from './util/fsx.js';
 import { git } from './util/git.js';
@@ -68,6 +69,51 @@ const norm = (p: string) => {
 };
 const same = (a: string, b: string) => norm(a) === norm(b);
 const inside = (child: string, parent: string) => isInsideOrEqual(child, parent);
+
+/**
+ * Why `dir` cannot be a workspace (undefined: it can). A workspace must be an existing folder that
+ * is not a drive root, not a system or profile folder (C:\Windows, Program Files, AppData, the home
+ * directory itself...), not a registered repo or inside one, and not around AgentCraft or its state.
+ */
+export function workspaceRefusal(dir: string, opts: { repos: string[]; protectedPaths: string[] }): string | undefined {
+  const abs = path.resolve(dir);
+  if (diskKind(abs) !== 'dir') return `${abs} is not an existing folder`;
+  if (path.parse(abs).root.replace(/[\\/]+$/, '') === abs.replace(/[\\/]+$/, '')) return `${abs} is a whole drive`;
+  const home = os.homedir();
+  if (same(abs, home) || inside(home, abs)) return `${abs} is your whole home folder: pick a folder inside it`;
+  // the temp folder is scratch space (it lives under AppData on Windows)
+  const tmp = os.tmpdir();
+  const inTmp = inside(abs, tmp) && !same(abs, tmp);
+  const env = process.env;
+  const system = [env.SystemRoot, env.windir, env.ProgramFiles, env['ProgramFiles(x86)'], env.ProgramData, env.APPDATA, env.LOCALAPPDATA, '/bin', '/etc', '/usr', '/var', '/System', '/Library', '/Applications'].filter((p): p is string => !!p);
+  for (const s of system) if (!inTmp && (inside(abs, s) || inside(s, abs))) return `${abs} is or holds a system folder (${s})`;
+  for (const r of opts.repos) {
+    if (inside(abs, r)) return `${abs} is inside the registered repo ${r}: change it through a goal for that repo`;
+  }
+  for (const p of opts.protectedPaths) if (inside(abs, p) || inside(p, abs)) return `${abs} is or holds ${p}, which AgentCraft uses`;
+  return undefined;
+}
+
+/**
+ * Existing absolute folders named in a text ("range D:\Popo stp", "D:/Work/My Projects."): the
+ * longest existing folder at each drive-letter or "/" path, which may contain spaces.
+ */
+export function dirsInText(text: string): string[] {
+  const out: string[] = [];
+  const re = isWin ? /[A-Za-z]:[\\/]/g : /(?<![\w.~])\//g;
+  for (const m of text.matchAll(re)) {
+    const words = text.slice(m.index).split(/\s+/);
+    let best: string | undefined;
+    let cand = '';
+    for (const w of words.slice(0, 8)) {
+      cand = cand ? `${cand} ${w}` : w;
+      const cleaned = cand.replace(/["'`»«)\].,;:!?]+$/, '').replace(/^["'`«(]+/, '');
+      if (cleaned && diskKind(cleaned) === 'dir') best = path.resolve(cleaned);
+    }
+    if (best && !out.some((o) => same(o, best!))) out.push(best);
+  }
+  return out;
+}
 
 /** The configured workspace a path or name designates (exact path, or inside one). */
 export function findWorkspace(workspaces: string[], given: string): string | undefined {

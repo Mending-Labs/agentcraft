@@ -42,7 +42,7 @@ public final class ConsoleCommands {
 	// ------------------------------------------------------------------ intents
 
 	public sealed interface Intent permits Goal, Message, Answer, RepoAdd, Repos, AgentAction, TaskAction, ShowDiff, Status, Help, Decide, Clear,
-		Sound, Auto, Invalid, Empty {
+		Sound, Auto, WorkspaceCmd, Invalid, Empty {
 	}
 
 	/** {@code repoId} null = the Foreman's default; {@code choices} non-empty = ask which repo first. */
@@ -90,6 +90,10 @@ public final class ConsoleCommands {
 	public record Auto(@Nullable Boolean on) implements Intent {
 	}
 
+	/** {@code addPath} null: list the workspaces. */
+	public record WorkspaceCmd(@Nullable String addPath) implements Intent {
+	}
+
 	public record Invalid(String error) implements Intent {
 	}
 
@@ -119,6 +123,7 @@ public final class ConsoleCommands {
 			new Command("repo", "/repo add <" + Tr.t("console.usage_path") + ">", Tr.t("console.cmd_repo_help")),
 			new Command("repos", "/repos", Tr.t("console.cmd_repos_help")),
 			new Command("status", "/status", Tr.t("console.cmd_status_help")),
+			new Command("workspace", "/workspace add <" + Tr.t("console.usage_path") + ">", Tr.t("console.cmd_workspace_help")),
 			new Command("auto", "/auto on|off", Tr.t("console.cmd_auto_help")),
 			new Command("sound", "/sound on|off", Tr.t("console.cmd_sound_help")),
 			new Command("clear", "/clear", Tr.t("console.cmd_clear_help")),
@@ -150,7 +155,7 @@ public final class ConsoleCommands {
 		if (repos.size() <= 1) {
 			return new Goal(text, repos.isEmpty() ? null : repos.get(0).id(), List.of());
 		}
-		if (namesWorkspace(text, s, repos)) {
+		if (namesWorkspace(text, s, repos) || namesFolder(text, repos)) {
 			// tidying a workspace folder: the lead has its workspace tools whatever the repo
 			return new Goal(text, defaultRepo(s), List.of());
 		}
@@ -179,6 +184,45 @@ public final class ConsoleCommands {
 	/** A goal sent for a workspace chosen in the chooser: the lead learns which folder it is about. */
 	public static Goal workspaceGoal(String text, Repo workspace, ForemanState s) {
 		return new Goal(text + " (workspace: " + workspace.path() + ")", defaultRepo(s), List.of());
+	}
+
+	/**
+	 * The goal names an existing folder outside the registered repos ("range D:\Popo"): the Foreman
+	 * adds it as a workspace, so no repo needs choosing.
+	 */
+	static boolean namesFolder(String text, List<Repo> repos) {
+		java.util.regex.Matcher m = java.util.regex.Pattern.compile("[A-Za-z]:[\\\\/]").matcher(text);
+		while (m.find()) {
+			String best = null;
+			String cand = "";
+			String[] words = text.substring(m.start()).split("\\s+");
+			for (int i = 0; i < Math.min(8, words.length); i++) {
+				cand = cand.isEmpty() ? words[i] : cand + " " + words[i];
+				String cleaned = cand.replaceAll("[\"'`»«)\\].,;:!?]+$", "");
+				try {
+					if (!cleaned.isEmpty() && java.nio.file.Files.isDirectory(java.nio.file.Path.of(cleaned))) {
+						best = cleaned;
+					}
+				} catch (RuntimeException e) {
+					// not a path
+				}
+			}
+			if (best == null) {
+				continue;
+			}
+			String b = normPath(best);
+			boolean inRepo = false;
+			for (Repo r : repos) {
+				String rp = r.path() == null ? null : normPath(r.path());
+				if (rp != null && (b.equals(rp) || b.startsWith(rp + "/"))) {
+					inRepo = true;
+				}
+			}
+			if (!inRepo) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/** The goal names a workspace folder (its path or folder name) and no registered repo's path. */
@@ -255,9 +299,24 @@ public final class ConsoleCommands {
 			case "clear", "cls" -> new Clear();
 			case "sound", "sounds", "mute" -> parseSound(cmd, args);
 			case "auto" -> parseAuto(args);
+			case "workspace", "workspaces", "ws" -> parseWorkspace(rest, args);
 			case "goal" -> rest.isEmpty() ? new Invalid(Tr.t("console.err_goal_after")) : goal(rest, s);
 			default -> new Invalid(Tr.t("console.err_unknown_command", cmd));
 		};
+	}
+
+	private static Intent parseWorkspace(String rest, List<String> args) {
+		if (args.isEmpty() || args.get(0).equalsIgnoreCase("list") || args.get(0).equalsIgnoreCase("ls")) {
+			return new WorkspaceCmd(null);
+		}
+		if (!args.get(0).equalsIgnoreCase("add")) {
+			return new Invalid(Tr.t("console.err_workspace_usage"));
+		}
+		String path = rest.strip().substring(3).strip();
+		if (path.length() >= 2 && (path.startsWith("\"") && path.endsWith("\"") || path.startsWith("'") && path.endsWith("'"))) {
+			path = path.substring(1, path.length() - 1).strip();
+		}
+		return path.isEmpty() ? new Invalid(Tr.t("console.err_workspace_usage")) : new WorkspaceCmd(path);
 	}
 
 	private static Intent parseAuto(List<String> args) {
@@ -583,6 +642,7 @@ public final class ConsoleCommands {
 			case Decide d -> Tr.t("console.desc_open_decisions");
 			case Clear c -> Tr.t("console.desc_clear_console");
 			case Sound so -> so.on() == null ? Tr.t("console.desc_sound_status") : so.on() ? Tr.t("console.desc_sound_on") : Tr.t("console.desc_sound_off");
+			case WorkspaceCmd w -> w.addPath() == null ? Tr.t("console.desc_workspace_list") : Tr.t("console.desc_workspace_add");
 			case Auto au -> au.on() == null ? Tr.t("console.desc_auto_status") : au.on() ? Tr.t("console.desc_auto_on") : Tr.t("console.desc_auto_off");
 			case Invalid i -> null;
 			case Empty e -> null;

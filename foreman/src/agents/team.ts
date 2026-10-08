@@ -676,7 +676,7 @@ export class TeamBackend implements Backend {
         role,
         cwd,
         // the lead may also read the workspaces it can propose reorganisations for
-        readDirs: [this.fm.memory.dir, ...(role === 'lead' ? (this.fm.config.workspaces ?? []) : [])],
+        readDirs: [this.fm.memory.dir, ...(role === 'lead' ? this.fm.workspaces() : [])],
         alwaysAllow: this.fm.store.data.permissionRules[agentId] ?? [],
         mcpServer: TEAM_MCP_SERVER,
         leadReadCommands: this.cfg.leadReadCommands,
@@ -687,7 +687,7 @@ export class TeamBackend implements Backend {
         return { allow: false, message: verdict.reason };
       }
       if (this.fm.autoFor('permissions')) {
-        const risk = autoRisk(verdict, { role, workspaces: this.fm.config.workspaces ?? [] });
+        const risk = autoRisk(verdict, { role, workspaces: this.fm.workspaces() });
         if (!risk) {
           this.fm.agentLog(agentId, 'tool', `auto mode allowed: ${describeToolCall(toolName, input)}`);
           return { allow: true };

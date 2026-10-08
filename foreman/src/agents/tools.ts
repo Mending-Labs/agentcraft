@@ -341,7 +341,7 @@ export function agentTools(fm: Foreman, agentId: string, role: 'lead' | 'worker'
     );
   }
 
-  const workspaces = fm.config.workspaces ?? [];
+  const workspaces = fm.workspaces();
   if (role === 'lead' && workspaces.length) {
     tools.push(
       tool(

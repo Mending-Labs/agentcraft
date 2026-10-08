@@ -2,11 +2,13 @@
 // directories and real git repos / linked worktrees: a manual move breaks their links, the
 // Foreman must re-link them with `git worktree repair`.
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { agentTools, type ToolHooks } from '../src/agents/tools.js';
 import { git } from '../src/util/git.js';
-import { applyPlan, checkPlan, describeLinks, TRASH_DIR, WORKSPACE_OPTIONS } from '../src/workspace.js';
+import { applyPlan, checkPlan, describeLinks, dirsInText, TRASH_DIR, WORKSPACE_OPTIONS, workspaceRefusal } from '../src/workspace.js';
+import type { Backend } from '../src/foreman.js';
 import { makeForeman, rmrf, tempDir, until, type Harness } from './helpers.js';
 
 let ws: string;
@@ -195,5 +197,65 @@ describe('propose_workspace_changes (lead tool)', () => {
     const r = await pending;
     expect(text(r)).toMatch(/did not approve.*garde keep/s);
     expect(fs.existsSync(path.join(ws, 'keep'))).toBe(true);
+  });
+});
+
+describe('workspaces added on the fly', () => {
+  it('finds the existing folders named in a goal, spaces included', () => {
+    const spaced = path.join(ws, 'My Projects');
+    fs.mkdirSync(spaced);
+    expect(dirsInText(`range ${ws} stp`)).toEqual([ws]);
+    expect(dirsInText(`trie "${spaced}".`)).toEqual([spaced]);
+    // a folder that does not exist is not replaced by its parent
+    expect(dirsInText(`range ${path.join(ws, 'nope')} et ${spaced} merci`)).toEqual([spaced]);
+    expect(dirsInText('rien ici')).toEqual([]);
+  });
+
+  it('refuses drive roots, the home folder, system folders and repos', () => {
+    expect(workspaceRefusal(path.parse(ws).root, { repos: [], protectedPaths: [] })).toMatch(/whole drive/);
+    expect(workspaceRefusal(os.homedir(), { repos: [], protectedPaths: [] })).toMatch(/home/);
+    if (process.env.SystemRoot) expect(workspaceRefusal(process.env.SystemRoot, { repos: [], protectedPaths: [] })).toMatch(/system/);
+    fs.mkdirSync(path.join(ws, 'repo', 'src'), { recursive: true });
+    expect(workspaceRefusal(path.join(ws, 'repo', 'src'), { repos: [path.join(ws, 'repo')], protectedPaths: [] })).toMatch(/registered repo/);
+    expect(workspaceRefusal(path.join(ws, 'nope'), { repos: [], protectedPaths: [] })).toMatch(/not an existing folder/);
+    expect(workspaceRefusal(ws, { repos: [], protectedPaths: [] })).toBeUndefined();
+  });
+
+  it('adds a folder named in a goal, keeps it across restarts and offers the lead tool', async () => {
+    const home = tempDir();
+    let h = makeForeman(home, ['--backend', 'claude']);
+    try {
+      const repoDir = path.join(ws, 'core');
+      await repo(repoDir);
+      await h.fm.repos.add(repoDir);
+      const tidy = path.join(tempDir('ac-popo-'));
+      const backend = { name: 'claude', start: async () => {}, stop: async () => {}, submitGoal: async () => {}, onUserMessage() {}, onDecisionSettled() {}, onTaskAction() {}, onAgentAction() {} } as unknown as Backend;
+      h.fm.backend = backend;
+      await h.fm.submitGoal(`trie et réorganise ${tidy} stp, et pas ${path.join(repoDir)}`);
+      expect(h.fm.workspaces()).toEqual([path.resolve(tidy)]);
+      expect(h.fm.status.workspaces).toEqual([path.resolve(tidy)]);
+      expect(agentTools(h.fm, 'marlow', 'lead', { onReview() {}, onChangesRequested() {}, onTasksChanged() {}, onMergeRequested() {}, onWaiting() {} }).some((t) => t.name === 'propose_workspace_changes')).toBe(true);
+      await h.fm.close();
+      h = makeForeman(home, ['--backend', 'claude']);
+      expect(h.fm.workspaces()).toEqual([path.resolve(tidy)]);
+      rmrf(tidy);
+    } finally {
+      await h.fm.close();
+      rmrf(home);
+    }
+  });
+
+  it('workspace.add refuses a folder that cannot be one', async () => {
+    const home = tempDir();
+    const h = makeForeman(home, ['--backend', 'claude']);
+    try {
+      expect(() => h.fm.addWorkspace(os.homedir())).toThrow(/home/);
+      expect(h.fm.addWorkspace(ws)).toBe(ws);
+      expect(h.fm.addWorkspace(ws)).toBe(ws);
+      expect(h.fm.workspaces()).toEqual([ws]);
+    } finally {
+      await h.fm.close();
+      rmrf(home);
+    }
   });
 });

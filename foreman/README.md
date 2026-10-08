@@ -274,8 +274,12 @@ spawns git with an empty environment); the policy refuses every command it can s
 ## Workspaces (src/workspace.ts)
 
 A workspace is a folder that is not a repository, e.g. the directory that holds all your repos and
-their worktrees. With `"workspaces": ["D:/Work"]` in `config.json` the lead may read it, and a goal
-such as "tidy D:/Work" is handled without tasks or worktrees:
+their worktrees. Workspaces come from `"workspaces": ["D:/Work"]` in `config.json`, from
+`/workspace add <path>` in the console, or from a goal that names an existing folder ("tidy
+D:\Other"): such a folder is added on the fly, unless it is a drive root, a system or profile folder
+(Windows, Program Files, AppData, your home folder itself), or inside a registered repo. Added ones
+are kept in the profile state. The lead may read them, and a goal such as "tidy D:/Work" is handled
+without tasks or worktrees:
 
 1. The lead inspects the folder (read-only) and calls `propose_workspace_changes` with an ordered
    plan of `mkdir`, `move` and `trash` operations.

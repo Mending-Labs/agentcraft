@@ -33,7 +33,7 @@ Rules
 
 /** Lead rules for workspace folders (config "workspaces"): tidy them through an approved plan. */
 function workspaceRules(fm: Foreman): string {
-  const ws = fm.config.workspaces ?? [];
+  const ws = fm.workspaces();
   if (!ws.length) return '';
   return `
 

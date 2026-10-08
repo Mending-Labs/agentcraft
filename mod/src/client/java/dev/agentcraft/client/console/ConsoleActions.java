@@ -2,6 +2,7 @@ package dev.agentcraft.client.console;
 
 import dev.agentcraft.client.console.ConsoleCommands.AgentAction;
 import dev.agentcraft.client.console.ConsoleCommands.Auto;
+import dev.agentcraft.client.console.ConsoleCommands.WorkspaceCmd;
 import dev.agentcraft.client.console.ConsoleCommands.Answer;
 import dev.agentcraft.client.console.ConsoleCommands.Clear;
 import dev.agentcraft.client.console.ConsoleCommands.Command;
@@ -132,6 +133,17 @@ public final class ConsoleActions {
 				clearFeedback();
 				return After.CLEAR;
 			}
+			case WorkspaceCmd w when w.addPath() == null -> {
+				ConsoleLog.remember(raw);
+				List<String> ws = s.status() == null ? List.of() : s.status().workspaces();
+				ConsoleLog.add(Tone.INFO, ws.isEmpty() ? Tr.t("console.workspaces_none") : Tr.t("console.workspaces_line", String.join(", ", ws)));
+				clearFeedback();
+				return After.CLEAR;
+			}
+			case WorkspaceCmd w -> track(Foreman.addWorkspace(w.addPath()), raw, restore, ack -> {
+				String p = ack.result() != null && ack.result().has("path") ? ack.result().get("path").getAsString() : w.addPath();
+				return Tr.t("console.workspace_added", p) + " " + UiBits.CHECK;
+			}, Tr.t("console.workspace_adding") + "…");
 			case Auto au when au.on() == null -> {
 				ConsoleLog.remember(raw);
 				boolean on = s.status() != null && Boolean.TRUE.equals(s.status().auto());

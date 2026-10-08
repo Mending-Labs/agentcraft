@@ -1048,6 +1048,24 @@ Turn auto mode on or off (console: `/auto on|off`); `foreman.status.auto` follow
 }
 ```
 
+### `workspace.add`
+
+Add a folder the lead may reorganise (console: `/workspace add <path>`; a goal that names a folder adds it too). Kept across restarts; `foreman.status.workspaces` follows.
+
+| field | type | required | notes |
+| --- | --- | --- | --- |
+| `id` | string | no | client correlation id; the Foreman answers with `ack` {re: id} |
+| `path` | string | yes |  |
+
+```json
+{
+  "v": 1,
+  "type": "workspace.add",
+  "id": "c20",
+  "path": "D:Work"
+}
+```
+
 ## Console mapping (mod)
 
 | console input | message |

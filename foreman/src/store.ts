@@ -59,6 +59,8 @@ export interface StateData {
   sessions: Record<string, SessionRecord>;
   worktreeMeta: Record<string, WorktreeMeta>; // key: `${repoId}/${worktreeId}`
   permissionRules: Record<string, string[]>; // agentId -> rule keys always allowed
+  /** workspaces added while running (workspace.add, or a folder named in a goal); config ones are not stored */
+  workspaces?: string[];
   /** opaque backend-owned state (e.g. sim progress) */
   backend: Record<string, unknown>;
 }

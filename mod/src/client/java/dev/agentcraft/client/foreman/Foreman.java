@@ -84,6 +84,11 @@ public final class Foreman {
 		return link.send(ForemanJson.msg("auto.set").put("enabled", enabled).json());
 	}
 
+	/** A folder the lead may reorganise (kept across Foreman restarts). */
+	public static CompletableFuture<Ack> addWorkspace(String path) {
+		return link.send(ForemanJson.msg("workspace.add").put("path", path).json());
+	}
+
 	public static CompletableFuture<Ack> addRepo(String path) {
 		return link.send(ForemanJson.msg("repo.add").put("path", path).json());
 	}
