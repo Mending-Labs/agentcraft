@@ -6,6 +6,7 @@ import { readJson } from './util/fsx.js';
 import type { BackendName } from './protocol.js';
 import { defaultUserName } from './user.js';
 import type { EffortLevel } from '@anthropic-ai/claude-agent-sdk';
+import { parseAuto, type AutoConfig } from './auto.js';
 
 export const FOREMAN_VERSION = '0.1.0';
 
@@ -91,6 +92,8 @@ export interface Config {
    * reorganise through a plan the user approves (see workspace.ts)
    */
   workspaces: string[];
+  /** auto mode: which decisions the Foreman answers without the user (see auto.ts); toggled live with auto.set */
+  auto: AutoConfig;
   goal?: string;
   autostart: boolean;
   reset: boolean;
@@ -212,7 +215,7 @@ export const KNOWN_FLAGS = new Set([
   'lead-model', 'worker-model', 'effort', 'lead-effort', 'max-turns', 'max-turns-lead', 'max-turns-worker',
   'max-concurrent', 'ci', 'max-budget', 'resume', 'lead-review', 'speed', 'seed', 'showcase', 'auto-answer',
   'ambient', 'lead-read-commands', 'lead-engine', 'worker-engine', 'engines', 'codex-path', 'codex-model', 'codex-lead-model',
-  'codex-worker-model', 'codex-effort', 'codex-lead-effort', 'workspace',
+  'codex-worker-model', 'codex-effort', 'codex-lead-effort', 'workspace', 'auto',
 ]);
 
 function engineName(v: unknown, d: EngineName, what: string): EngineName {
@@ -290,6 +293,7 @@ export function loadConfig(argv: string[], env: NodeJS.ProcessEnv = process.env)
     port: num(pick('port', 'AGENTCRAFT_PORT'), 7878),
     repos,
     workspaces,
+    auto: parseAuto(file.auto, flags.auto !== undefined || env.AGENTCRAFT_AUTO !== undefined ? bool(flags.auto ?? env.AGENTCRAFT_AUTO, false) : undefined),
     goal: str(flags.goal),
     autostart: bool(flags.autostart, false) || !!str(flags.goal),
     reset: bool(flags.reset, false),
@@ -352,6 +356,8 @@ usage: npm run start -- [options]
   --repo <path>[,<path>]   register local git repo(s) at start (sim: defaults to a fresh sandbox/sim-demo)
   --workspace <dir>[,<dir>] folders that are not repos (config.json "workspaces"): the lead may read them
                            and propose a reorganisation you approve (mkdir / move / trash; git worktrees re-linked)
+  --auto / --no-auto       auto mode (env AGENTCRAFT_AUTO, config.json "auto": true or {permissions, merges,
+                           workspace, questions}): answer decisions without you, except risky permissions
   --goal "<text>"          submit a goal right away
   --port <n>               WebSocket port (default 7878, env AGENTCRAFT_PORT)
   --home <dir>             state root (default ~/.agentcraft, env AGENTCRAFT_HOME)

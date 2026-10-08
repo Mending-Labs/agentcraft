@@ -1,6 +1,7 @@
 package dev.agentcraft.client.console;
 
 import dev.agentcraft.client.console.ConsoleCommands.AgentAction;
+import dev.agentcraft.client.console.ConsoleCommands.Auto;
 import dev.agentcraft.client.console.ConsoleCommands.Answer;
 import dev.agentcraft.client.console.ConsoleCommands.Clear;
 import dev.agentcraft.client.console.ConsoleCommands.Command;
@@ -131,6 +132,15 @@ public final class ConsoleActions {
 				clearFeedback();
 				return After.CLEAR;
 			}
+			case Auto au when au.on() == null -> {
+				ConsoleLog.remember(raw);
+				boolean on = s.status() != null && Boolean.TRUE.equals(s.status().auto());
+				ConsoleLog.add(Tone.INFO, Tr.t("console.auto_line", Tr.t(on ? "console.auto_state_on" : "console.auto_state_off")));
+				clearFeedback();
+				return After.CLEAR;
+			}
+			case Auto au -> track(Foreman.setAuto(au.on()), raw, restore,
+				ack -> Tr.t(au.on() ? "console.auto_on" : "console.auto_off") + " " + UiBits.CHECK, Tr.t("console.auto_sending") + "…");
 			case Sound so -> {
 				ConsoleLog.remember(raw);
 				if (so.on() != null) {

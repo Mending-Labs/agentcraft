@@ -29,6 +29,7 @@ import { ClientError, type Backend, type Foreman } from '../foreman.js';
 import { withGitSafety } from '../gitsafety.js';
 import { agentGitIdentity } from '../util/git.js';
 import { classifyToolUse, describeRuleKey, describeToolCall } from '../policy.js';
+import { autoRisk } from '../auto.js';
 import type { BackendName, Decision, Goal, Task } from '../protocol.js';
 import { MERGE_OPTIONS, PERMISSION_OPTIONS } from '../protocol.js';
 import type { TestResult } from '../repos.js';
@@ -684,6 +685,14 @@ export class TeamBackend implements Backend {
       if (verdict.action === 'deny') {
         this.fm.agentLog(agentId, 'error', `blocked: ${describeToolCall(toolName, input)} (${verdict.reason})`);
         return { allow: false, message: verdict.reason };
+      }
+      if (this.fm.autoFor('permissions')) {
+        const risk = autoRisk(verdict, { role, workspaces: this.fm.config.workspaces ?? [] });
+        if (!risk) {
+          this.fm.agentLog(agentId, 'tool', `auto mode allowed: ${describeToolCall(toolName, input)}`);
+          return { allow: true };
+        }
+        this.fm.agentLog(agentId, 'tool', `auto mode still asks (${risk})`);
       }
       const prev = this.fm.agent(agentId);
       const prevState = prev ? { state: prev.state, station: prev.station, activity: prev.activity } : undefined;

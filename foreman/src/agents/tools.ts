@@ -86,15 +86,22 @@ export function agentTools(fm: Foreman, agentId: string, role: 'lead' | 'worker'
   };
   const fail = (text: string) => withInbox(`Error: ${text}`, true);
 
-  /** Open a decision and wait for the user (the agent walks to the podium meanwhile). */
-  const askUser = async (input: Omit<Parameters<Foreman['createDecision']>[0], 'agentId'>): Promise<Decision | 'stopped'> => {
+  /**
+   * Open a decision and wait for the user (the agent walks to the podium meanwhile). With `auto`,
+   * auto mode answers it at once: it is recorded and shown, but nobody walks to the podium.
+   */
+  const askUser = async (input: Omit<Parameters<Foreman['createDecision']>[0], 'agentId'>, auto?: { option?: string; text?: string }): Promise<Decision | 'stopped'> => {
     const prev = fm.agent(agentId);
     // the stream mapper may already show the agent waiting at the user (it saw the tool call):
     // after the answer the agent goes back to thinking at its own station, not "waiting"
     const home = role === 'lead' ? 'meeting' : 'desk';
     const waiting = prev?.state === 'waiting_user' || prev?.station === 'user';
     const prevState = { state: waiting ? 'thinking' : (prev?.state ?? 'thinking'), station: waiting ? home : (prev?.station ?? home), activity: prev?.activity ?? '' };
-    const d = fm.createDecision({ agentId, ...input, ...(prev?.taskId ? { taskId: prev.taskId } : {}) });
+    const d = fm.createDecision({ agentId, ...input, ...(prev?.taskId ? { taskId: prev.taskId } : {}), ...(auto ? { auto: true } : {}) });
+    if (auto) {
+      fm.autoAnswer(d, auto.option, auto.text);
+      return fm.decisions.wait(d.id);
+    }
     fm.setAgent(agentId, { state: 'waiting_user', station: 'user', activity: 'waiting for your answer' });
     hooks.onWaiting(agentId, true);
     // If the turn is aborted (stop, pause, task cancelled, timeout) nobody will read the answer:
@@ -148,11 +155,17 @@ export function agentTools(fm: Foreman, agentId: string, role: 'lead' | 'worker'
         context: z.string().optional().describe('one or two lines of background'),
       },
       async ({ question, options, context }) => {
-        const done = await askUser({ kind: 'question', question, options: options ?? [], ...(context ? { context } : {}) });
+        // auto mode: the recommended (first) option, or let the agent decide
+        const auto = fm.autoFor('questions')
+          ? options?.length
+            ? { option: options[0]! }
+            : { text: `(auto mode) ${userName()} is not answering questions right now: decide yourself and note the assumption.` }
+          : undefined;
+        const done = await askUser({ kind: 'question', question, options: options ?? [], ...(context ? { context } : {}) }, auto);
         if (done === 'stopped') return withInbox(`Your turn was stopped before ${userName()} answered.`, true);
         if (done.status === 'cancelled') return withInbox('The question was cancelled. Use your best judgement and note the assumption.');
         const ans = [done.answer?.option, done.answer?.text].filter(Boolean).join(' — ');
-        return withInbox(`${userName()} answered: ${ans}`);
+        return withInbox(`${auto ? 'Auto mode (the recommended option)' : userName()} answered: ${ans}`);
       },
     ),
     tool(
@@ -304,6 +317,7 @@ export function agentTools(fm: Foreman, agentId: string, role: 'lead' | 'worker'
             return withInbox(`${t.id} changed no files, so there is nothing to merge: it is closed as done. Tell ${userName()} the result with send_message if you have not yet.`);
           }
           const wt = fm.repos.requireWorktree(t.repoId, t.worktree);
+          const autoMerge = fm.autoFor('merges') && t.ci === 'pass';
           const d = fm.createDecision({
             agentId,
             kind: 'merge',
@@ -313,8 +327,14 @@ export function agentTools(fm: Foreman, agentId: string, role: 'lead' | 'worker'
             taskId: t.id,
             repoId: t.repoId,
             worktree: wt.id,
+            ...(autoMerge ? { auto: true } : {}),
           });
           hooks.onMergeRequested(t.id, d);
+          // auto mode: you reviewed it and its tests pass, so it merges without waiting
+          if (autoMerge) {
+            fm.autoAnswer(d, MERGE_OPTIONS[0]);
+            return withInbox(`Auto mode is merging ${t.id} (tests pass, your review approved it); the result shows in the feed.`);
+          }
           return withInbox(`Merge decision ${d.id} sent to ${userName()}.`);
         },
       ),
@@ -361,12 +381,16 @@ export function agentTools(fm: Foreman, agentId: string, role: 'lead' | 'worker'
             mode: 'replace',
           });
           const shown = lines.length > 30 ? [...lines.slice(0, 30), `... ${lines.length - 30} more (full plan: memory ${note.id})`] : lines;
-          const done = await askUser({
+          const done = await askUser(
+            {
             kind: 'question',
             question: `Apply this reorganisation of ${root}? (${plan.ops.length} operation${plan.ops.length === 1 ? '' : 's'})`,
             options: [...WORKSPACE_OPTIONS],
             context: `${summary}\n\n${shown.join('\n')}${links.length ? `\n\ngit worktree repair: ${links.length} repo(s)` : ''}\nNothing is deleted: trash goes to ${path.relative(root, plan.trashDir)}`,
-          });
+            },
+            // auto mode: applied without the podium (nothing is deleted, the journal can undo it)
+            fm.autoFor('workspace') ? { option: WORKSPACE_OPTIONS[0] } : undefined,
+          );
           if (done === 'stopped') return withInbox(`Your turn was stopped before ${userName()} answered: nothing was changed.`, true);
           if (done.status === 'cancelled') return withInbox('The plan was withdrawn: nothing was changed.');
           const feedback = done.answer?.text ? ` ${userName()} said: ${done.answer.text}` : '';

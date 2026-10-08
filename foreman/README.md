@@ -85,6 +85,7 @@ most ~100 ms of state, and interrupted agent turns resume on the next start.
 | `--profile` | backend name | state lives in `<home>/<profile>` |
 | `--repo <path>[,<path>]` | | register repos at start (sim: a fresh `sandbox/sim-demo`) |
 | `--workspace <dir>[,<dir>]` / config `workspaces` | | folders that are not repos, which the lead may reorganise through a plan you approve (see Workspaces) |
+| `--auto` / `AGENTCRAFT_AUTO` / config `auto` | off | auto mode: decisions answered for you (see Auto mode); console `/auto on\|off` |
 | `--goal "<text>"` | | submit a goal right away |
 | `--reset` | | wipe this profile first |
 | `--notify` / `--no-notify` / `AGENTCRAFT_NOTIFY` | on for claude, off for sim | Windows, macOS or Linux (`notify-send`) notifications |
@@ -289,6 +290,25 @@ such as "tidy D:/Work" is handled without tasks or worktrees:
    repositories and linked worktrees that moved are re-linked with `git worktree repair` (a plain
    move breaks the link between a repo and its worktrees). A journal with the reverse moves is
    written to `<profile>/workspace/`.
+
+## Auto mode (src/auto.ts)
+
+`"auto": true` in `config.json` (or `--auto`, or `/auto on` in the console, live) lets the team
+go on without you. Each kind can be turned off on its own:
+`"auto": {"permissions": true, "merges": true, "workspace": true, "questions": true}`.
+
+- **permissions**: a prompt the policy would ask is allowed, unless it is risky: anything from
+  the lead (read-only in your checkout), process/system commands, recursive changes outside the
+  worktree, writes outside the worktree and the workspaces, git internals or git pointed at
+  another repository, `--global` installs, links out of the worktree. Those still ask. Policy
+  denials (git push, ...) are never affected.
+- **merges**: a merge the lead approved with `request_merge` merges when the task's tests pass. A
+  failing or unknown test result, or a merge the lead did not approve, still waits for you.
+- **workspace**: a workspace plan is applied without the podium (trash and journal as usual).
+- **questions**: `ask_user` gets its first (recommended) option; without options the agent is told
+  to decide and note the assumption.
+
+Auto answers are recorded like yours ("Auto mode answered ...") but ring no bell and show no toast.
 
 ## Safety guarantees (src/repos.ts)
 

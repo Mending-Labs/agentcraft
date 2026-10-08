@@ -30,6 +30,7 @@ import { RepoError, RepoManager } from './repos.js';
 import { Store } from './store.js';
 import { TaskError, TaskGraph } from './taskgraph.js';
 import { setUserName, userName } from './user.js';
+import type { AutoConfig, AutoKind } from './auto.js';
 import { truncate } from './util/text.js';
 
 export interface Backend {
@@ -78,6 +79,8 @@ export class Foreman {
   readonly cast: CastMember[];
   backend: Backend | undefined;
   status: ForemanStatus;
+  /** auto mode (config "auto", toggled live with auto.set) */
+  readonly auto: AutoConfig;
 
   private listeners = new Set<(m: Outbound) => void>();
   private logBuffers = new Map<string, LogEntry[]>();
@@ -105,9 +108,11 @@ export class Foreman {
     setUserName(opts.config.userName);
     this.status = { version: FOREMAN_VERSION, backend: opts.config.backend, auth: opts.config.backend === 'sim' ? 'ok' : 'unknown', userName: userName() };
     if (opts.config.workspaces?.length) this.status.workspaces = [...opts.config.workspaces];
+    this.auto = { ...opts.config.auto };
+    this.status.auto = this.auto.enabled;
     if (opts.config.backend === 'sim') this.status.message = 'Simulated team (sim backend)';
     this.initRoster();
-    this.decisions.onCreated((d) => this.onDecisionCreated(d));
+    this.decisions.onCreated((d, input) => this.onDecisionCreated(d, input));
   }
 
   // ---- event plumbing ---------------------------------------------------------------------
@@ -347,9 +352,11 @@ export class Foreman {
     return this.decisions.create(input);
   }
 
-  private onDecisionCreated(d: Decision): void {
+  private onDecisionCreated(d: Decision, input?: CreateDecisionInput): void {
     const who = this.nameOf(d.agentId);
     const label = d.kind === 'merge' ? 'merge review' : d.kind === 'permission' ? 'permission' : 'question';
+    // auto mode answers it right away (autoAnswer): no bell, no toast
+    if (input?.auto) return;
     this.bus.feed('decision', `${who} needs you (${label}): ${d.question}`, { agentId: d.agentId, to: 'user' });
     this.notify('need_user', `${who}: ${truncate(d.question, 120)}`, d.id);
     this.notifier.needUser(`${who}: ${d.question}`);
@@ -367,7 +374,29 @@ export class Foreman {
   }
 
   /** Answer a decision, run kind-specific side effects, then wake the waiting agent. */
-  async answerDecision(id: string, option?: string | number, text?: string): Promise<Decision> {
+  // ---- auto mode -----------------------------------------------------------------------------
+
+  /** Auto mode is on and covers this kind of decision. */
+  autoFor(kind: AutoKind): boolean {
+    return this.auto.enabled && this.auto[kind];
+  }
+
+  setAuto(enabled: boolean): void {
+    if (this.auto.enabled === enabled) return;
+    this.auto.enabled = enabled;
+    this.setStatus({ auto: enabled });
+    this.bus.feed('system', enabled ? 'Auto mode on: decisions are answered without you (risky permissions still ask)' : 'Auto mode off: every decision waits for you again');
+  }
+
+  /** Answer a decision opened with `auto: true` on the user's behalf (after the caller starts waiting). */
+  autoAnswer(d: Decision, option?: string, text?: string): void {
+    setImmediate(() => {
+      if (this.closed || this.decisions.get(d.id)?.status !== 'open') return;
+      this.answerDecision(d.id, option, text, { auto: true }).catch((e) => this.log.error(`auto answer ${d.id}: ${(e as Error).message}`));
+    });
+  }
+
+  async answerDecision(id: string, option?: string | number, text?: string, opts: { auto?: boolean } = {}): Promise<Decision> {
     let d: Decision;
     try {
       d = this.decisions.answer(id, option, text);
@@ -376,7 +405,7 @@ export class Foreman {
       throw e;
     }
     const answerText = [d.answer?.option, d.answer?.text].filter(Boolean).join(' — ');
-    this.bus.feed('decision', `${userName()} answered ${this.nameOf(d.agentId)}: ${answerText}`, { agentId: 'user', to: d.agentId });
+    this.bus.feed('decision', `${opts.auto ? 'Auto mode' : userName()} answered ${this.nameOf(d.agentId)}: ${answerText}`, { agentId: 'user', to: d.agentId });
     if (d.kind === 'merge') await this.applyMergeAnswer(d);
     if (d.status === 'answered' || d.status === 'cancelled') {
       this.decisions.settle(d.id);
@@ -534,6 +563,9 @@ export class Foreman {
         }
         return undefined;
       }
+      case 'auto.set':
+        this.setAuto(msg.enabled);
+        return { auto: this.auto.enabled };
       case 'repo.add': {
         const r = await this.repos.add(msg.path);
         this.bus.feed('system', `Repo connected: ${r.name} (${r.branch})`);

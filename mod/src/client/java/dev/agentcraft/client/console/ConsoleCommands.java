@@ -42,7 +42,7 @@ public final class ConsoleCommands {
 	// ------------------------------------------------------------------ intents
 
 	public sealed interface Intent permits Goal, Message, Answer, RepoAdd, Repos, AgentAction, TaskAction, ShowDiff, Status, Help, Decide, Clear,
-		Sound, Invalid, Empty {
+		Sound, Auto, Invalid, Empty {
 	}
 
 	/** {@code repoId} null = the Foreman's default; {@code choices} non-empty = ask which repo first. */
@@ -86,6 +86,10 @@ public final class ConsoleCommands {
 	public record Sound(@Nullable Boolean on) implements Intent {
 	}
 
+	/** {@code on} null: show the state. */
+	public record Auto(@Nullable Boolean on) implements Intent {
+	}
+
 	public record Invalid(String error) implements Intent {
 	}
 
@@ -115,6 +119,7 @@ public final class ConsoleCommands {
 			new Command("repo", "/repo add <" + Tr.t("console.usage_path") + ">", Tr.t("console.cmd_repo_help")),
 			new Command("repos", "/repos", Tr.t("console.cmd_repos_help")),
 			new Command("status", "/status", Tr.t("console.cmd_status_help")),
+			new Command("auto", "/auto on|off", Tr.t("console.cmd_auto_help")),
 			new Command("sound", "/sound on|off", Tr.t("console.cmd_sound_help")),
 			new Command("clear", "/clear", Tr.t("console.cmd_clear_help")),
 			new Command("help", "/help", Tr.t("console.cmd_help_help")));
@@ -225,8 +230,20 @@ public final class ConsoleCommands {
 			case "decide", "decisions", "d" -> new Decide(args.isEmpty() ? null : args.get(0));
 			case "clear", "cls" -> new Clear();
 			case "sound", "sounds", "mute" -> parseSound(cmd, args);
+			case "auto" -> parseAuto(args);
 			case "goal" -> rest.isEmpty() ? new Invalid(Tr.t("console.err_goal_after")) : goal(rest, s);
 			default -> new Invalid(Tr.t("console.err_unknown_command", cmd));
+		};
+	}
+
+	private static Intent parseAuto(List<String> args) {
+		if (args.isEmpty()) {
+			return new Auto(null);
+		}
+		return switch (args.get(0).toLowerCase(Locale.ROOT)) {
+			case "on", "1", "yes", "oui" -> new Auto(true);
+			case "off", "0", "no", "non" -> new Auto(false);
+			default -> new Invalid(Tr.t("console.err_auto_usage"));
 		};
 	}
 
@@ -542,6 +559,7 @@ public final class ConsoleCommands {
 			case Decide d -> Tr.t("console.desc_open_decisions");
 			case Clear c -> Tr.t("console.desc_clear_console");
 			case Sound so -> so.on() == null ? Tr.t("console.desc_sound_status") : so.on() ? Tr.t("console.desc_sound_on") : Tr.t("console.desc_sound_off");
+			case Auto au -> au.on() == null ? Tr.t("console.desc_auto_status") : au.on() ? Tr.t("console.desc_auto_on") : Tr.t("console.desc_auto_off");
 			case Invalid i -> null;
 			case Empty e -> null;
 		};

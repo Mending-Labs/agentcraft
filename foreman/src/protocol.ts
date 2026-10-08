@@ -222,6 +222,7 @@ export const ForemanStatus = z.object({
   costUsd: z.number().optional().describe('claude: estimated spend of this profile (sum over all sessions, survives restarts)'),
   userName: z.string().optional().describe('the person the team works for, as the agents address them (UI: "<name> answered")'),
   workspaces: z.array(z.string()).optional().describe('folders that are not repos the lead may reorganise (config `workspaces`); a goal that names one needs no repo choice'),
+  auto: z.boolean().optional().describe('auto mode is on: permissions (except risky ones), lead-approved merges with passing tests, workspace plans and questions are answered without the user'),
 });
 export type ForemanStatus = z.infer<typeof ForemanStatus>;
 
@@ -399,6 +400,7 @@ export const DiffRequestMsg = z.object({
   worktree: Id.describe('worktree id (e.g. "kit-t2"); an agent id resolves to that agent\'s current worktree'),
 });
 export const RepoAddMsg = z.object({ ...envelope('repo.add'), path: z.string().min(1) });
+export const AutoSetMsg = z.object({ ...envelope('auto.set'), enabled: z.boolean() });
 
 export const ClientMessage = z.discriminatedUnion('type', [
   HelloMsg,
@@ -409,6 +411,7 @@ export const ClientMessage = z.discriminatedUnion('type', [
   AgentActionMsg,
   DiffRequestMsg,
   RepoAddMsg,
+  AutoSetMsg,
 ]);
 export type ClientMessage = z.infer<typeof ClientMessage>;
 
@@ -482,6 +485,7 @@ export const CLIENT_MESSAGES = {
   'agent.action': { schema: AgentActionMsg, doc: 'Pause/resume/stop an agent, or spawn (activate) an off-shift worker.' },
   'diff.request': { schema: DiffRequestMsg, doc: 'Ask for the structured diff of a worktree. Answered with `diff` (same requestId).' },
   'repo.add': { schema: RepoAddMsg, doc: 'Register a local git repo (console: `/repo add <path>`).' },
+  'auto.set': { schema: AutoSetMsg, doc: 'Turn auto mode on or off (console: `/auto on|off`); `foreman.status.auto` follows.' },
 } as const;
 
 export const ENTITY_SCHEMAS = {

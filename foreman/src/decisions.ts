@@ -20,6 +20,8 @@ export interface CreateDecisionInput {
   repoId?: string;
   worktree?: string;
   tool?: string;
+  /** auto mode answers it right away: recorded and shown, but the user is not notified */
+  auto?: boolean;
 }
 
 type Waiter = { resolve: (d: Decision) => void };
@@ -28,7 +30,7 @@ export class DecisionQueue {
   private waiters = new Map<string, Waiter[]>();
   /** answered, but side effects (e.g. the merge) not finished yet: waiters keep waiting */
   private unsettled = new Set<string>();
-  private createdListeners: Array<(d: Decision) => void> = [];
+  private createdListeners: Array<(d: Decision, input: CreateDecisionInput) => void> = [];
 
   constructor(private ctx: Ctx) {}
 
@@ -48,7 +50,7 @@ export class DecisionQueue {
     return this.all.find((d) => d.id === id);
   }
 
-  onCreated(l: (d: Decision) => void): void {
+  onCreated(l: (d: Decision, input: CreateDecisionInput) => void): void {
     this.createdListeners.push(l);
   }
 
@@ -73,7 +75,7 @@ export class DecisionQueue {
     this.all.push(d);
     this.trim();
     this.touch(d);
-    for (const l of this.createdListeners) l(d);
+    for (const l of this.createdListeners) l(d, input);
     return d;
   }
 

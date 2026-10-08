@@ -188,6 +188,7 @@ Exact option labels: merge decisions use `Merge`, `Request changes`, `Reject`; p
 | `costUsd` | number | no | claude: estimated spend of this profile (sum over all sessions, survives restarts) |
 | `userName` | string | no | the person the team works for, as the agents address them (UI: "<name> answered") |
 | `workspaces` | string[] | no | folders that are not repos the lead may reorganise (config `workspaces`); a goal that names one needs no repo choice |
+| `auto` | boolean | no | auto mode is on: permissions (except risky ones), lead-approved merges with passing tests, workspace plans and questions are answered without the user |
 
 ### <a id="agentlogs"></a>AgentLogs
 
@@ -1026,6 +1027,24 @@ Register a local git repo (console: `/repo add <path>`).
   "type": "repo.add",
   "id": "c18",
   "path": "C:\\Projects\\agentcraft\\sandbox\\demo-app"
+}
+```
+
+### `auto.set`
+
+Turn auto mode on or off (console: `/auto on|off`); `foreman.status.auto` follows.
+
+| field | type | required | notes |
+| --- | --- | --- | --- |
+| `id` | string | no | client correlation id; the Foreman answers with `ack` {re: id} |
+| `enabled` | boolean | yes |  |
+
+```json
+{
+  "v": 1,
+  "type": "auto.set",
+  "id": "c19",
+  "enabled": true
 }
 ```
 

@@ -79,6 +79,11 @@ public final class Foreman {
 		return link.send(ForemanJson.msg("agent.action").put("agentId", agentId).put("action", action).put("arg", arg).json());
 	}
 
+	/** Auto mode on/off: the Foreman answers decisions for the player (risky permissions still ask). */
+	public static CompletableFuture<Ack> setAuto(boolean enabled) {
+		return link.send(ForemanJson.msg("auto.set").put("enabled", enabled).json());
+	}
+
 	public static CompletableFuture<Ack> addRepo(String path) {
 		return link.send(ForemanJson.msg("repo.add").put("path", path).json());
 	}
