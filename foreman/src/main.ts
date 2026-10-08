@@ -1,8 +1,8 @@
-// Foreman entry point: `npm run start -- --backend sim|claude [--repo <path>] [--speed N] ...`
+// Foreman entry point: `npm run start -- --backend sim|claude|codex [--repo <path>] [--speed N] ...`
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { ClaudeBackend } from './agents/claude/index.js';
+import { createTeam } from './agents/teams.js';
 import { SimBackend } from './agents/sim/index.js';
 import { DEFAULT_SIM_GOAL } from './agents/sim/scenario.js';
 import { FOREMAN_VERSION, HELP, loadConfig, type Config } from './config.js';
@@ -61,7 +61,7 @@ export async function main(argv: string[]): Promise<void> {
   }
 
   const foreman = new Foreman({ config: cfg, logger: log });
-  const backend = cfg.backend === 'sim' ? new SimBackend(foreman, cfg.sim) : new ClaudeBackend(foreman, cfg.claude);
+  const backend = cfg.backend === 'sim' ? new SimBackend(foreman, cfg.sim) : createTeam(foreman, cfg);
   const server = new ForemanServer(foreman, { host: cfg.host, port: cfg.port, allowBrowserOrigins: cfg.allowBrowserOrigins, validateOutbound: cfg.debug, log });
 
   try {

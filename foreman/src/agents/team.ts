@@ -20,6 +20,7 @@
 // the worktree busy on Windows and could still write to it) - and the old worktree's work is
 // committed on its branch. The next worker's worktree then starts from that branch.
 import type { ChildProcess } from 'node:child_process';
+import os from 'node:os';
 import path from 'node:path';
 import type { ClaudeConfig } from '../config.js';
 import { FOREMAN_VERSION } from '../config.js';
@@ -700,12 +701,15 @@ export class TeamBackend implements Backend {
     };
   }
 
-  /** The git dir a worktree's commits are written to (outside the worktree itself). */
-  private gitDirOf(cwd: string, role: Role, job: Job): string[] {
+  /**
+   * Where a worker may write besides its worktree: the git dir its commits go to, and the temp dir
+   * (scratch files and test runs; the policy allows it too).
+   */
+  private writableRoots(role: Role, job: Job): string[] {
     if (role !== 'worker' || !job.taskId) return [];
     const t = this.fm.tasks.get(job.taskId);
     const repo = t?.repoId ? this.fm.repos.get(t.repoId) : undefined;
-    return repo ? [path.join(repo.path, '.git')] : [];
+    return [...(repo ? [path.join(repo.path, '.git')] : []), os.tmpdir()];
   }
 
   private async runJob(job: Job): Promise<void> {
@@ -755,7 +759,7 @@ export class TeamBackend implements Backend {
           instructions: systemAppend,
           ...(resume ? { resume } : {}),
           env: agentEnv(process.env, { agentId, cwd }),
-          writableRoots: this.gitDirOf(cwd, role, job),
+          writableRoots: this.writableRoots(role, job),
           abort,
           turn,
           permission: this.permissionGate(agentId, role, cwd, turn),
