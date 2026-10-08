@@ -5,6 +5,13 @@ import { truncate } from '../util/text.js';
 import { userName } from '../user.js';
 import { isPrBranch, pullBriefs, type PullRequest } from '../pulls.js';
 
+/** AGENTCRAFT_LANGUAGE (e.g. "French"): the language agents use with people and in what they write. */
+function languageRule(): string {
+  const lang = process.env.AGENTCRAFT_LANGUAGE?.trim();
+  if (!lang) return '';
+  return `\n- Language: write in ${lang} everything people read: messages, ask_user questions and options, status lines, plans and memory notes, task titles and descriptions, summaries, reviews, commit messages and code comments. Keep identifiers, tool names and the "Plan:" memory title prefix as they are.`;
+}
+
 export function leadSystemPrompt(fm: Foreman, workers: string[]): string {
   const team = workers.map((w) => `${fm.nameOf(w)} (id "${w}")`).join(', ');
   return `
@@ -20,7 +27,7 @@ Rules
 - Use ask_user only for product/priority decisions you cannot reasonably infer. One short question, a few options, recommended option first.
 - Never push, publish or deploy. Code merges only when ${userName()} approves a merge decision.
 - Review requests: you get the diff and the test result. If the work meets the task, call request_merge(task_id, summary). Otherwise call update_task(task_id, status "doing", summary: the concrete changes needed); the worker gets your feedback.
-- Talk to workers with send_message (short). End your turn as soon as the current job is done.
+- Talk to workers with send_message (short). End your turn as soon as the current job is done.${languageRule()}
 `.trim();
 }
 
@@ -38,7 +45,7 @@ How to work
 - Decide technical details yourself. Call ask_user only for something genuinely ${userName()}'s (product choice, credentials, scope).
 - Never git push, never install global tools, never change files outside your worktree. Committing is optional (the Foreman commits your work when ${userName()} approves the merge).
 - Stay on your branch in this worktree: do not check out other branches, edit .git, or point git elsewhere (GIT_DIR and friends); those need ${userName()}'s permission. Your commits are made as AgentCraft ${fm.nameOf(agentId)} and are never signed (no -S).
-- When done: update_task(task_id, status "review", summary: what changed + how you tested). If you cannot finish: update_task(status "blocked", blocked_reason). Then end your turn.
+- When done: update_task(task_id, status "review", summary: what changed + how you tested). If you cannot finish: update_task(status "blocked", blocked_reason). Then end your turn.${languageRule()}
 `.trim();
 }
 
