@@ -21,6 +21,11 @@ export interface GitOptions {
   /** Do not throw on non-zero exit. */
   allowFail?: boolean;
   timeoutMs?: number;
+  /**
+   * The Foreman's own fetch/push of a shared Foreman (mergerequests.ts): https and ssh allowed
+   * (AGENTCRAFT_GIT_PROTOCOLS overrides, for tests), pushes not redirected. Hooks stay off.
+   */
+  remote?: boolean;
 }
 
 // No core.autocrlf override: in the user's own checkout the Foreman must see and write files exactly
@@ -43,6 +48,8 @@ const BASE_ARGS = [
   '-c', 'protocol.allow=never',
   '-c', `url.${PUSH_BLOCK_URL}.pushInsteadOf=`,
 ];
+/** dropped (with their -c) for opts.remote */
+const NETWORK_BLOCK = new Set(['protocol.allow=never', `url.${PUSH_BLOCK_URL}.pushInsteadOf=`]);
 
 /**
  * process.env without variables that would point git at another repository, work tree or index
@@ -56,8 +63,10 @@ function baseEnv(): NodeJS.ProcessEnv {
 }
 
 export async function git(cwd: string, args: string[], opts: GitOptions = {}): Promise<RunResult> {
-  const env = { ...baseEnv(), GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'never', GIT_ALLOW_PROTOCOL: 'agentcraft-none', GIT_OPTIONAL_LOCKS: '0', LC_ALL: 'C', ...(opts.env ?? {}) };
-  const res = await run('git', [...BASE_ARGS, ...args], { cwd, env, input: opts.input, timeoutMs: opts.timeoutMs ?? 120_000 });
+  const protocols = opts.remote ? process.env.AGENTCRAFT_GIT_PROTOCOLS?.trim() || 'https:ssh' : 'agentcraft-none';
+  const env = { ...baseEnv(), GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'never', GIT_ALLOW_PROTOCOL: protocols, GIT_OPTIONAL_LOCKS: '0', LC_ALL: 'C', ...(opts.env ?? {}) };
+  const base = opts.remote ? BASE_ARGS.filter((a, i) => !NETWORK_BLOCK.has(a) && !NETWORK_BLOCK.has(BASE_ARGS[i + 1] ?? '')) : BASE_ARGS;
+  const res = await run('git', [...base, ...args], { cwd, env, input: opts.input, timeoutMs: opts.timeoutMs ?? 120_000 });
   if (res.code !== 0 && !opts.allowFail) {
     const msg = (res.stderr || res.stdout).trim().split('\n').slice(-3).join(' | ');
     throw new GitError(`git ${args.slice(0, 3).join(' ')} failed: ${msg}`, res, args);

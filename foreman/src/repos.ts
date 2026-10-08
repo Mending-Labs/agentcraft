@@ -27,9 +27,6 @@ import { runShell } from './util/proc.js';
 import { slugify, tailLines } from './util/text.js';
 import { gitlabProject, openMergeRequest } from './mergerequests.js';
 
-/** The Foreman's own fetch/push (shared Foreman only): https and ssh; every other git call has no transport at all. */
-const remoteEnv = (): NodeJS.ProcessEnv => ({ GIT_ALLOW_PROTOCOL: process.env.AGENTCRAFT_GIT_PROTOCOLS?.trim() || 'https:ssh' });
-
 export class RepoError extends Error {
   constructor(
     message: string,
@@ -651,7 +648,7 @@ export class RepoManager {
   async syncBase(r: Repo, remote: string): Promise<void> {
     const b = r.branch;
     if (!b || b === 'HEAD') return;
-    const f = await git(r.path, ['fetch', '--quiet', remote, `+refs/heads/${b}:refs/remotes/${remote}/${b}`], { allowFail: true, timeoutMs: 120_000, env: remoteEnv() });
+    const f = await git(r.path, ['fetch', '--quiet', remote, `+refs/heads/${b}:refs/remotes/${remote}/${b}`], { allowFail: true, timeoutMs: 120_000, remote: true });
     if (f.code !== 0) {
       this.ctx.log.warn(`${r.name}: could not fetch ${remote}/${b}: ${(f.stderr || f.stdout).trim().split('\n').slice(-1)[0]}`);
       return;
@@ -707,11 +704,12 @@ export class RepoManager {
     const ahead = Number(await gitOut(r.path, ['rev-list', '--count', `${w.base}..${w.branch}`]));
     if (!ahead) throw new RepoError(`${w.branch} has no changes to merge`, 'empty');
 
-    const url = (await git(r.path, ['remote', 'get-url', o.remote], { allowFail: true })).stdout.trim();
+    // the URL as configured (get-url would expand insteadOf rewrites)
+    const url = (await git(r.path, ['config', '--get', `remote.${o.remote}.url`], { allowFail: true })).stdout.trim();
     const where = url ? gitlabProject(url) : undefined;
     if (!where) throw new RepoError(`${r.name}: remote ${o.remote} (${url || 'none'}) is not a GitLab project URL`, 'failed');
     // the branch is ours alone: a branch pushed again after requested changes replaces the old one
-    const push = await git(r.path, ['push', '--quiet', o.remote, `+refs/heads/${w.branch}:refs/heads/${w.branch}`], { allowFail: true, timeoutMs: 180_000, env: remoteEnv() });
+    const push = await git(r.path, ['push', '--quiet', o.remote, `+refs/heads/${w.branch}:refs/heads/${w.branch}`], { allowFail: true, timeoutMs: 180_000, remote: true });
     if (push.code !== 0) throw new RepoError(`could not push ${w.branch} to ${o.remote}: ${(push.stderr || push.stdout).trim().split('\n').slice(-2).join(' ')}`, 'failed');
     let mr;
     try {

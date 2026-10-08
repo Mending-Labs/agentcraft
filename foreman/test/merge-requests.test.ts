@@ -29,9 +29,9 @@ describe('approved merges as GitLab merge requests', () => {
     repoPath = await demoRepo();
     bare = path.join(path.dirname(repoPath), 'origin.git');
     await git(path.dirname(repoPath), ['init', '--bare', '-q', bare]);
-    // the URL GitLab knows; pushes really go to the bare repo
+    // the URL GitLab knows; git rewrites it to the bare repo (a real push: no pushurl)
     await git(repoPath, ['remote', 'add', 'origin', 'https://gitlab.test/grp/demo-app.git']);
-    await git(repoPath, ['config', 'remote.origin.pushurl', bare]);
+    await git(repoPath, ['config', `url.${bare}.insteadOf`, 'https://gitlab.test/grp/demo-app.git']);
     fs.writeFileSync(path.join(home, 'gitlab-token'), 'glpat-test\n');
     fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ mergeRequests: { tokenFile: path.join(home, 'gitlab-token') } }));
     calls.length = 0;
@@ -91,5 +91,42 @@ describe('approved merges as GitLab merge requests', () => {
     expect(h.fm.decisions.get(d.id)!.status).toBe('open');
     expect(h.fm.decisions.get(d.id)!.context).toMatch(/GitLab token/);
     expect(calls).toHaveLength(0);
+  });
+});
+
+describe('the checkouts of a shared Foreman follow their origin', () => {
+  it('a new worktree starts from origin/main (fast-forward), not from a stale local main', async () => {
+    const { execFileSync } = await import('node:child_process');
+    const home = tempDir();
+    const repoPath = await demoRepo();
+    const bare = path.join(path.dirname(repoPath), 'origin.git');
+    const other = path.join(path.dirname(repoPath), 'someone-else');
+    const sh = (cwd: string, ...a: string[]) => execFileSync('git', a, { cwd, encoding: 'utf8' }).trim();
+    sh(path.dirname(repoPath), 'init', '--bare', '-q', bare);
+    sh(repoPath, 'remote', 'add', 'origin', 'https://gitlab.test/grp/demo-app.git');
+    sh(repoPath, 'config', `url.${bare}.insteadOf`, 'https://gitlab.test/grp/demo-app.git');
+    const branch = sh(repoPath, 'branch', '--show-current');
+    sh(repoPath, '-c', 'protocol.file.allow=always', 'push', '-q', 'origin', branch);
+    // someone merges an MR in GitLab meanwhile
+    sh(path.dirname(repoPath), '-c', 'protocol.file.allow=always', 'clone', '-q', '-b', branch, bare, other);
+    fs.writeFileSync(path.join(other, 'merged-in-gitlab.txt'), 'x\n');
+    sh(other, 'add', '.');
+    sh(other, '-c', 'user.name=T', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'merged in GitLab');
+    sh(other, '-c', 'protocol.file.allow=always', 'push', '-q', 'origin', branch);
+    fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ mergeRequests: { tokenSecret: 'Gitlab' } }));
+    vi.stubEnv('AGENTCRAFT_GIT_PROTOCOLS', 'file');
+    const h = makeForeman(home, ['--backend', 'claude']);
+    try {
+      const repo = await h.fm.repos.add(repoPath);
+      const t = h.fm.tasks.create({ title: 'Next', assignee: 'kit', repoId: repo.id, createdBy: 'marlow' });
+      const wt = await h.fm.repos.createWorktree(repo.id, 'kit', t);
+      expect(fs.existsSync(path.join(wt.path, 'merged-in-gitlab.txt'))).toBe(true);
+      expect(fs.existsSync(path.join(repoPath, 'merged-in-gitlab.txt'))).toBe(true);
+    } finally {
+      vi.unstubAllEnvs();
+      await h.fm.close();
+      rmrf(home);
+      rmrf(path.dirname(repoPath));
+    }
   });
 });
