@@ -216,7 +216,7 @@ function effort(v: unknown, d: EffortLevel): EffortLevel {
 
 /** Every flag loadConfig reads (the `no-` prefix is stripped by parseFlags). */
 export const KNOWN_FLAGS = new Set([
-  'home', 'backend', 'profile', 'user-name', 'use-claude-login', 'repo', 'workers', 'model', 'port', 'goal', 'autostart', 'reset', 'notify',
+  'home', 'backend', 'profile', 'user-name', 'use-claude-login', 'repo', 'workers', 'model', 'port', 'host', 'goal', 'autostart', 'reset', 'notify',
   'toast-silent', 'debug', 'quiet', 'allow-browser-origins', 'repo-poll-ms', 'merge-style', 'sign-merges',
   'lead-model', 'worker-model', 'effort', 'lead-effort', 'max-turns', 'max-turns-lead', 'max-turns-worker',
   'max-concurrent', 'ci', 'max-budget', 'resume', 'lead-review', 'speed', 'seed', 'showcase', 'auto-answer',
@@ -369,6 +369,8 @@ usage: npm run start -- [options]
                            workspace, questions}): answer decisions without you, except risky permissions
   --goal "<text>"          submit a goal right away
   --port <n>               WebSocket port (default 7878, env AGENTCRAFT_PORT)
+  --host <addr>            listen address (default 127.0.0.1, env AGENTCRAFT_HOST, config "host"); a non-loopback
+                           address needs members (npm start -- user add <name> admin)
   --home <dir>             state root (default ~/.agentcraft, env AGENTCRAFT_HOME)
   --user-name <name>       your name, as the agents address you (default: your OS user name,
                            env AGENTCRAFT_USER_NAME, config.json "userName")
