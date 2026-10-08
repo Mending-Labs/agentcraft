@@ -43,7 +43,7 @@ describe('autoRisk (which permission prompts still ask)', () => {
     const v = ask('the command name comes from a variable or substitution and cannot be checked', 'lead:Bash:exact:1');
     expect(autoRisk(v, { ...lead, command: "Get-ChildItem -LiteralPath 'D:\\Work' -Directory | ForEach-Object { $f = $_; git -C $f.FullName status --short }" })).toBeUndefined();
     expect(autoRisk(v, { ...lead, command: "Get-ChildItem 'D:\\Work' | Remove-Item -Recurse" })).toMatch(/Remove-Item/);
-    expect(autoRisk(v, { ...lead, command: "Get-Content 'C:\\Users\\me\\.ssh\\id_rsa'" })).toMatch(/outside/);
+    expect(autoRisk(v, { ...lead, command: "Get-Content 'C:\\Users\\me\\.ssh\\id_rsa'" })).toMatch(/secrets file/);
     expect(autoRisk(v, { ...lead, tool: 'Bash', command: 'ls D:/Work' })).toMatch(/lead/);
   });
 

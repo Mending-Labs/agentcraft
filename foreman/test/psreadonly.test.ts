@@ -49,8 +49,35 @@ describe.runIf(process.platform === 'win32')('psReadOnlyProblem', () => {
     no('curl.exe -D headers.txt https://example.com', /headers/);
   });
 
+  it('accepts reads elsewhere when not sensitive, and the lead\'s blocked git reads', () => {
+    ok(`Test-Path -LiteralPath 'G:\\Mon Drive\\SAO_V2\\Docs\\SAO_V2'; Get-ChildItem -LiteralPath D:\\Popo\\MineOps -Force | Select-Object Name,Mode; git -C D:\\Mending-Labs\\mendings-core branch -a; git -C D:\\Mending-Labs\\mendings-core diff -- docs/rpg/EN-ATTENTE.md; Get-Content -Encoding UTF8 D:\\Popo\\MineOps\\artifacts\\o1-supervision\\bilan-superviseur.md`);
+    ok(`git -C D:\\Mending-Labs\\mendings-core rev-parse main origin/main HEAD; git -C D:\\Mending-Labs\\mendings-core log -1 --format='%h %ci %s' main; git -C D:\\Mending-Labs\\mendings-core log main --oneline --grep='o1\\|cibles mortes\\|DataScope'; git -C D:\\Mending-Labs\\mendings-core branch -a --contains 3a9e24d1; git -C D:\\Mending-Labs\\mendings-core grep -n -I -E 'sort de sa banque|pages achetées|D-232.*Codex' main -- socle/profils docs; git -C D:\\Mending-Labs\\mendings-website ls-files content data docs | Select-Object -First 40`);
+    ok(`git -C D:\\Popo\\MineOps config --get remote.origin.url; git -C D:\\Popo\\MineOps tag --list; git -C D:\\Popo\\MineOps stash list`);
+  });
+
+  it('refuses git calls that change refs, settings or run programs', () => {
+    no(`git -C D:\\Popo\\MineOps branch -D old`, /-D changes refs/);
+    no(`git -C D:\\Popo\\MineOps branch -a -d old`, /-d changes refs/);
+    no(`git -C D:\\Popo\\MineOps branch nouvelle`, /creates a branch/);
+    no(`git -C D:\\Popo\\MineOps tag v1.0`, /creates a tag/);
+    no(`git -C D:\\Popo\\MineOps config user.name x`, /config/);
+    no(`git -C D:\\Popo\\MineOps config --unset user.name`, /config/);
+    no(`git -c core.pager=calc -C D:\\Popo\\MineOps log`, /-c/);
+    no(`git -C D:\\Popo\\MineOps log --output=D:\\Popo\\x.txt`, /writing a file/);
+    no(`git -C D:\\Popo\\MineOps grep -O notepad x`, /starting a program/);
+    no(`git -C D:\\Popo\\MineOps stash drop`, /stash/);
+  });
+
+  it('refuses sensitive reads anywhere, and key files even inside the workspaces', () => {
+    no(`Get-ChildItem 'C:\\'`, /whole drive/);
+    no(`Get-ChildItem -Recurse 'C:\\Users'`, /home folder/);
+    no(`Get-Content 'D:\\Popo\\MineOps\\.env'`, /secrets file/);
+    no(`Get-Content 'D:\\Mending-Labs\\mendings-core\\deploy\\server.key'`, /secrets file/);
+    no(`Get-Content 'G:\\Mon Drive\\secrets.json'`, /secrets file/);
+  });
+
   it('refuses reads outside the repo and the workspaces', () => {
-    no(`Get-Content 'C:\\Users\\Quentin\\.ssh\\id_rsa'`, /outside/);
+    no(`Get-Content 'C:\\Users\\Quentin\\.ssh\\id_rsa'`, /secrets file|home/);
     no(`Get-Content "$env:USERPROFILE\\.ssh\\id_rsa"`, /scoped variable \$env/);
     no(`Get-Content $HOME\\.ssh\\id_rsa`, /variable \$HOME/);
     no(`Get-Content ~\\.ssh\\id_rsa`, /home folder/);

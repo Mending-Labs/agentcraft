@@ -10,11 +10,32 @@
 //   - variables: only `$_` / `$PSItem` / `$true` / `$false` / `$null` and those the script assigns
 //     itself (so `$env:`, `$HOME`, `$PROFILE`... are refused: they would point the reads elsewhere),
 //     inside double-quoted strings too
-//   - every literal absolute path is inside one of `roots`; no UNC, `~`, drive-relative (`C:x`) or
-//     provider (`Env:`, `HKLM:`) paths, no `..` walking up
+//   - every literal absolute path is inside one of `roots` (repo, workspaces), or anywhere else that
+//     is not sensitive: not a whole drive, not the home folder or a folder holding it, not AppData,
+//     not a dot-folder of the home (.ssh, .aws, .codex, .agentcraft...), not a key or secrets file
+//     (*.pem, *.key, id_rsa, .env, secrets*.json, credentials*, *.kdbx...); no UNC, `~`,
+//     drive-relative (`C:x`) or provider (`Env:`, `HKLM:`) paths, no `..` walking up
 // Anything else is "not proven": the caller keeps asking the user.
+import os from 'node:os';
 import path from 'node:path';
 import { isInsideOrEqual } from './util/fsx.js';
+
+const SENSITIVE_NAME = /^(id_(rsa|dsa|ecdsa|ed25519)(\.pub)?|\.env(\..*)?|.*\.(pem|key|pfx|p12|kdbx|keystore|jks|ovpn)|secrets?([._-].*)?\.(json|ya?ml|toml|txt)|credentials?(\..*)?|\.netrc|\.npmrc|\.pypirc|\.git-credentials)$/i;
+
+/** Why reading `p` (outside the repo and workspaces) would be sensitive, or undefined. */
+export function sensitivePath(p: string): string | undefined {
+  const abs = path.resolve(p);
+  const home = os.homedir();
+  if (path.parse(abs).root.replace(/[\\/]+$/, '') === abs.replace(/[\\/]+$/, '')) return 'a whole drive';
+  if (isInsideOrEqual(home, abs)) return 'the home folder (or a folder holding it)';
+  for (const d of [process.env.APPDATA, process.env.LOCALAPPDATA].filter((x): x is string => !!x)) if (isInsideOrEqual(abs, d)) return 'AppData';
+  if (isInsideOrEqual(abs, home)) {
+    const first = path.relative(home, abs).split(/[\\/]/)[0] ?? '';
+    if (first.startsWith('.') || first.toLowerCase() === 'appdata') return `${first} in the home folder`;
+  }
+  if (abs.split(/[\\/]/).some((seg) => SENSITIVE_NAME.test(seg))) return 'a key or secrets file';
+  return undefined;
+}
 
 const READ_CMDS = new Set([
   'get-childitem', 'gci', 'ls', 'dir', 'get-item', 'gi', 'get-itemproperty', 'gp', 'test-path', 'join-path', 'split-path',
@@ -25,10 +46,52 @@ const READ_CMDS = new Set([
   'get-location', 'pwd', 'gl', 'get-filehash', 'compare-object', 'compare', 'get-unique', 'select-xml',
 ]);
 const KEYWORDS = new Set(['if', 'elseif', 'else', 'foreach', 'for', 'while', 'do', 'until', 'switch', 'return', 'break', 'continue', 'try', 'catch', 'finally']);
-const GIT_READ_SUBS = new Set(['status', 'log', 'show', 'diff', 'rev-parse', 'ls-files', 'describe', 'rev-list', 'shortlog', 'blame', 'cat-file', 'ls-tree', 'merge-base', 'for-each-ref', 'show-ref']);
-const GIT_VALUE_OPTS = new Set(['-c', '-C', '--git-dir', '--work-tree', '--namespace']);
+const GIT_READ_SUBS = new Set(['status', 'log', 'show', 'diff', 'rev-parse', 'ls-files', 'describe', 'rev-list', 'shortlog', 'blame', 'cat-file', 'ls-tree', 'merge-base', 'for-each-ref', 'show-ref', 'grep', 'name-rev', 'check-ignore', 'count-objects', 'whatchanged', 'cherry', 'range-diff', 'show-branch', 'version']);
+const GIT_VALUE_OPTS = new Set(['-C', '--git-dir', '--work-tree', '--namespace']);
+/** branch / tag listing modes (a name after them is a pattern or a commit, not a new ref) */
+const GIT_LIST_FLAGS = new Set(['-a', '--all', '-r', '--remotes', '-l', '--list', '--contains', '--no-contains', '--merged', '--no-merged', '--points-at', '--show-current', '-v', '-vv', '--verbose', '-n']);
+const GIT_REF_CHANGES: Record<string, RegExp> = {
+  branch: /^(-[dDmMcCfu]|--(delete|move|copy|force|set-upstream-to|unset-upstream|edit-description|track|no-track|create-reflog))$/,
+  // for tag, -a is --annotate (it creates one)
+  tag: /^(-[dasfmFu]|--(delete|annotate|sign|force|message|file|local-user|create-reflog))$/,
+};
+const GIT_CONFIG_READS = new Set(['--get', '--get-all', '--get-regexp', '--get-urlmatch', '--list', '-l']);
+const GIT_CONFIG_WRITES = /^(--(add|unset|unset-all|replace-all|rename-section|remove-section|edit)|-e)$/;
+
+/** Why the git call whose arguments start at `tokens[from]` is not a plain read. */
+function gitProblem(tokens: string[], from: number): string | undefined {
+  let end = from;
+  while (end < tokens.length && !CURL_STOP.has(tokens[end]!)) end++;
+  const args = tokens.slice(from, end);
+  // -c core.pager=..., aliases, --exec-path: git would run a command of the script's choosing
+  if (args.some((a) => a === '-c' || a.startsWith('--config-env') || a.startsWith('--exec-path'))) return 'git -c / --exec-path (git could run a command)';
+  if (args.some((a) => a === '--output' || a === '-O' || a.startsWith('--open-files-in-pager') || a === '--ext-diff')) return 'git writing a file or starting a program';
+  let j = 0;
+  while (j < args.length && args[j]!.startsWith('-')) j += GIT_VALUE_OPTS.has(args[j]!) ? 2 : 1;
+  const sub = (args[j] ?? '').toLowerCase();
+  const rest = args.slice(j + 1);
+  const next = (rest[0] ?? '').toLowerCase();
+  if (GIT_READ_SUBS.has(sub)) return undefined;
+  if (sub === 'worktree' && next === 'list') return undefined;
+  if (sub === 'remote' && (next === '' || next === '-v' || next === 'get-url' || next === 'show')) return undefined;
+  if (sub === 'stash' && (next === 'list' || next === 'show')) return undefined;
+  if (sub === 'reflog' && (next === '' || next === 'show' || next.startsWith('-'))) return undefined;
+  if (sub === 'branch' || sub === 'tag') {
+    const changes = GIT_REF_CHANGES[sub]!;
+    const change = rest.find((a) => changes.test(a));
+    if (change) return `git ${sub} ${change} changes refs`;
+    const listing = sub === 'branch' ? rest.length === 0 || rest.some((a) => GIT_LIST_FLAGS.has(a)) : rest.length === 0 || rest.some((a) => GIT_LIST_FLAGS.has(a) && a !== '-a');
+    if (listing) return undefined;
+    return `git ${sub} with a name creates a ${sub}`;
+  }
+  if (sub === 'config') {
+    if (rest.some((a) => GIT_CONFIG_WRITES.test(a))) return 'git config changing a setting';
+    if (rest.some((a) => GIT_CONFIG_READS.has(a))) return undefined;
+    return 'git config without --get / --list may set a value';
+  }
+  return `git ${sub || '(no subcommand)'} may change things`;
+}
 const BUILTIN_VARS = new Set(['_', 'psitem', 'true', 'false', 'null', 'matches', 'lastexitcode']);
-const SEPARATORS = new Set([';', '|', '}', ')', '']);
 
 /** curl flags that change nothing (single letters may be combined: -sSL). */
 const CURL_FLAGS = new Set(['--silent', '--show-error', '--location', '--head', '--include', '--verbose', '--insecure', '--fail', '--fail-with-body', '--compressed', '--http1.1', '--http2', '--no-progress-meter', '--globoff']);
@@ -113,7 +176,11 @@ export function psReadOnlyProblem(script: string, roots: string[]): string | und
     // a drive letter on its own (not the "s:/" of "https://")
     for (const m of w.matchAll(/(?<![A-Za-z0-9])[A-Za-z]:[\\/][^,;|]*/g)) {
       const p = m[0].trim();
-      if (!roots.some((r) => isInsideOrEqual(path.resolve(p), r))) return `the path ${p} (outside the repo and workspaces)`;
+      // key and secrets files ask even inside the repo; elsewhere, only sensitive places ask
+      if (p.split(/[\\/]/).some((seg) => SENSITIVE_NAME.test(seg))) return `the path ${p} (a key or secrets file)`;
+      if (roots.some((r) => isInsideOrEqual(path.resolve(p), r))) continue;
+      const why = sensitivePath(p);
+      if (why) return `the path ${p} (${why})`;
     }
   }
 
@@ -169,17 +236,9 @@ export function psReadOnlyProblem(script: string, roots: string[]): string | und
       cmdPos = ['else', 'try', 'finally', 'do', 'return'].includes(lower);
       continue;
     }
-    if (lower === 'git') {
-      let j = i + 1;
-      while (j < tokens.length && tokens[j]!.startsWith('-')) j += GIT_VALUE_OPTS.has(tokens[j]!) ? 2 : 1;
-      const sub = (tokens[j] ?? '').toLowerCase();
-      const next = (tokens[j + 1] ?? '').toLowerCase();
-      const ok =
-        GIT_READ_SUBS.has(sub) ||
-        (sub === 'worktree' && next === 'list') ||
-        (sub === 'remote' && (next === '-v' || SEPARATORS.has(next))) ||
-        (sub === 'branch' && ['--show-current', '-a', '-v', '-vv', '-r', '--list'].includes(next));
-      if (!ok) return `git ${sub || '(no subcommand)'} may change things`;
+    if (lower === 'git' || lower === 'git.exe') {
+      const problem = gitProblem(tokens, i + 1);
+      if (problem) return problem;
       continue;
     }
     if (lower === 'curl' || lower === 'curl.exe') {
