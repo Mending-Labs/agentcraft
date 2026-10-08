@@ -32,6 +32,7 @@ import { TaskError, TaskGraph } from './taskgraph.js';
 import { setUserName, userName } from './user.js';
 import type { AutoConfig, AutoKind } from './auto.js';
 import { dirsInText, workspaceRefusal } from './workspace.js';
+import { McpCatalog } from './mcp.js';
 import { isInsideOrEqual } from './util/fsx.js';
 import { truncate } from './util/text.js';
 
@@ -83,6 +84,8 @@ export class Foreman {
   status: ForemanStatus;
   /** auto mode (config "auto", toggled live with auto.set) */
   readonly auto: AutoConfig;
+  /** external MCP servers given to the team (config "mcp") and their tool catalogues */
+  readonly mcp: McpCatalog;
 
   private listeners = new Set<(m: Outbound) => void>();
   private logBuffers = new Map<string, LogEntry[]>();
@@ -113,6 +116,7 @@ export class Foreman {
     if (ws.length) this.status.workspaces = ws;
     this.auto = { ...opts.config.auto };
     this.status.auto = this.auto.enabled;
+    this.mcp = new McpCatalog(opts.config.mcp ?? {}, this.log);
     if (opts.config.backend === 'sim') this.status.message = 'Simulated team (sim backend)';
     this.initRoster();
     this.decisions.onCreated((d, input) => this.onDecisionCreated(d, input));
@@ -700,6 +704,8 @@ export class Foreman {
 
   async start(backend: Backend): Promise<void> {
     this.backend = backend;
+    // which tools of the external MCP servers only read (for "read" access): fetched in the background
+    void this.mcp.load();
     for (const p of this.config.repos) {
       try {
         const r = await this.repos.add(p);

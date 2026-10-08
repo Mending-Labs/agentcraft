@@ -7,6 +7,7 @@ import type { BackendName } from './protocol.js';
 import { defaultUserName } from './user.js';
 import type { EffortLevel } from '@anthropic-ai/claude-agent-sdk';
 import { parseAuto, type AutoConfig } from './auto.js';
+import { parseMcp, type McpServerConfig } from './mcp.js';
 
 export const FOREMAN_VERSION = '0.1.0';
 
@@ -94,6 +95,8 @@ export interface Config {
   workspaces: string[];
   /** auto mode: which decisions the Foreman answers without the user (see auto.ts); toggled live with auto.set */
   auto: AutoConfig;
+  /** external MCP servers given to the team, with access per role (see mcp.ts) */
+  mcp: Record<string, McpServerConfig>;
   goal?: string;
   autostart: boolean;
   reset: boolean;
@@ -294,6 +297,7 @@ export function loadConfig(argv: string[], env: NodeJS.ProcessEnv = process.env)
     repos,
     workspaces,
     auto: parseAuto(file.auto, flags.auto !== undefined || env.AGENTCRAFT_AUTO !== undefined ? bool(flags.auto ?? env.AGENTCRAFT_AUTO, false) : undefined),
+    mcp: parseMcp(file.mcp),
     goal: str(flags.goal),
     autostart: bool(flags.autostart, false) || !!str(flags.goal),
     reset: bool(flags.reset, false),

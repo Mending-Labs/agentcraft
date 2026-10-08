@@ -64,6 +64,8 @@ export interface PolicyContext {
   tempDirs?: string[];
   /** lead only: command prefixes the user declared read-only, e.g. `bd show` */
   leadReadCommands?: string[];
+  /** external MCP servers the user gave this agent (config "mcp", see mcp.ts) */
+  mcp?: { access(server: string): 'none' | 'read' | 'write'; isReadOnly(server: string, tool: string): boolean };
 }
 
 const READ_TOOLS = new Set(['Read', 'Grep', 'Glob', 'LS', 'NotebookRead']);
@@ -2067,6 +2069,17 @@ function askVerdict(reason: string, key: string): Verdict {
 export function classifyToolUse(toolName: string, input: Record<string, unknown>, ctx: PolicyContext): Verdict {
   const server = ctx.mcpServer ?? 'agentcraft';
   if (toolName.startsWith(`mcp__${server}__`)) return { action: 'allow', reason: 'AgentCraft tool' };
+  // a server the user gave this agent: "write" = all its tools, "read" = its read-only tools only
+  const ext = /^mcp__([A-Za-z0-9_-]+?)__(.+)$/.exec(toolName);
+  if (ext && ctx.mcp) {
+    const access = ctx.mcp.access(ext[1]!);
+    if (access === 'write') return { action: 'allow', reason: `${ext[1]} (write access)` };
+    if (access === 'read') {
+      return ctx.mcp.isReadOnly(ext[1]!, ext[2]!)
+        ? { action: 'allow', reason: `${ext[1]} (read access)` }
+        : { action: 'deny', reason: `${ext[1]}: you may only read it (${ext[2]} changes things). Ask the lead with send_message to make this change.` };
+    }
+  }
   if (toolName in DENIED_TOOLS) return { action: 'deny', reason: DENIED_TOOLS[toolName]! };
   if (ALWAYS_OK.has(toolName)) return { action: 'allow', reason: toolName };
 

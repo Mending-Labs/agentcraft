@@ -680,6 +680,7 @@ export class TeamBackend implements Backend {
         alwaysAllow: this.fm.store.data.permissionRules[agentId] ?? [],
         mcpServer: TEAM_MCP_SERVER,
         leadReadCommands: this.cfg.leadReadCommands,
+        mcp: { access: (s) => this.fm.mcp.access(s, role), isReadOnly: (s, t) => this.fm.mcp.isReadOnly(s, t) },
       });
       if (verdict.action === 'allow') return { allow: true };
       if (verdict.action === 'deny') {

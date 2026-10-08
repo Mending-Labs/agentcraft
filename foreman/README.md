@@ -295,6 +295,22 @@ without tasks or worktrees:
    move breaks the link between a repo and its worktrees). A journal with the reverse moves is
    written to `<profile>/workspace/`.
 
+## Your own MCP servers (src/mcp.ts)
+
+AgentCraft never passes your own MCP servers to the agents. To give the team one (your project
+tracker, say), declare it in `config.json` with the access each role gets:
+
+```json
+"mcp": { "seed": { "url": "https://seed.example.com/api/mcp", "bearerTokenEnvVar": "SEED_MCP_TOKEN",
+                   "lead": "write", "workers": "read" } }
+```
+
+The token stays in the environment variable (set it before starting AgentCraft). `write` gives
+every tool of the server, `read` only its read-only tools (the server's `tools/list` annotation
+`readOnlyHint`, else the tool name: get_, list_, search_...), `none` (default) nothing. Claude agents:
+the policy allows or refuses each call; a refused write tells the worker to ask the lead. Codex
+agents: the server is added to their thread with only the allowed tools (`enabled_tools`).
+
 ## Auto mode (src/auto.ts)
 
 `"auto": true` in `config.json` (or `--auto`, or `/auto on` in the console, live) lets the team

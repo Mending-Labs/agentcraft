@@ -144,12 +144,30 @@ export class CodexEngine implements Engine {
     }
   }
 
+  /**
+   * The user's own MCP servers this role may use (config "mcp"). Codex runs MCP tools itself, so
+   * "read" access is enforced by listing only the read-only tools (enabled_tools); while that list
+   * is unknown (catalogue not fetched), a "read" server is left out rather than opened in full.
+   */
+  private teamMcp(role: Role): Record<string, unknown> {
+    const out: Record<string, unknown> = {};
+    for (const [name, s] of this.fm.mcp.forRole(role)) {
+      const base = { url: s.url, enabled: true, ...(s.bearerTokenEnvVar ? { bearer_token_env_var: s.bearerTokenEnvVar } : {}) };
+      if (this.fm.mcp.access(name, role) === 'write') out[name] = base;
+      else {
+        const tools = this.fm.mcp.readOnlyTools(name);
+        if (tools?.length) out[name] = { ...base, enabled_tools: tools };
+      }
+    }
+    return out;
+  }
+
   /** Config overrides for an agent thread (see the header). `userConfig`: the effective config. */
   private threadConfig(userConfig: any, spec: TurnSpec, serverEnv: NodeJS.ProcessEnv): Record<string, unknown> {
     const off = (names: string[]) => Object.fromEntries(names.map((n) => [n, { enabled: false }]));
     const effort = spec.role === 'lead' ? this.cfg.leadEffort : this.cfg.effort;
     return {
-      mcp_servers: off(Object.keys(userConfig?.mcp_servers ?? {})),
+      mcp_servers: { ...off(Object.keys(userConfig?.mcp_servers ?? {})), ...this.teamMcp(spec.role) },
       plugins: off(Object.keys(userConfig?.plugins ?? {})),
       features: Object.fromEntries(OFF_FEATURES.map((f) => [f, false])),
       web_search: 'disabled',

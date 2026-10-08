@@ -77,7 +77,13 @@ export class ClaudeEngine implements Engine {
       tools: role === 'lead' ? ['Read', 'Grep', 'Glob', 'Bash'] : ['Read', 'Grep', 'Glob', 'Edit', 'Write', 'Bash', 'TodoWrite'],
       // no allowedTools: every tool call (incl. our MCP tools) goes through canUseTool/policy
       disallowedTools: ['Bash(git push:*)', 'Task', 'Agent', 'WebSearch', 'WebFetch'],
-      mcpServers: { [MCP_SERVER]: mcpServer(spec.tools) },
+      mcpServers: {
+        [MCP_SERVER]: mcpServer(spec.tools),
+        // the user's own servers this role may use (config "mcp"); every call still goes through the policy
+        ...Object.fromEntries(
+          this.fm.mcp.forRole(role).map(([name, s, token]) => [name, { type: 'http' as const, url: s.url, ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}) }]),
+        ),
+      },
       systemPrompt: { type: 'preset', preset: 'claude_code', append: spec.instructions },
       abortController: abort,
       env: withAuthMode(spec.env, this.cfg.useClaudeLogin),

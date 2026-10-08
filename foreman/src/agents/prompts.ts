@@ -27,8 +27,23 @@ Rules
 - Use ask_user only for product/priority decisions you cannot reasonably infer. One short question, a few options, recommended option first.
 - Never push, publish or deploy. Code merges only when ${userName()} approves a merge decision.
 - Review requests: you get the diff and the test result. If the work meets the task, call request_merge(task_id, summary). Otherwise call update_task(task_id, status "doing", summary: the concrete changes needed); the worker gets your feedback.
-- Talk to workers with send_message (short). End your turn as soon as the current job is done.${languageRule()}${workspaceRules(fm)}
+- Talk to workers with send_message (short). End your turn as soon as the current job is done.${languageRule()}${workspaceRules(fm)}${mcpRules(fm, 'lead')}
 `.trim();
+}
+
+/** What an agent may do with the user's own MCP servers (config "mcp"). */
+function mcpRules(fm: Foreman, role: 'lead' | 'worker'): string {
+  const servers = Object.keys(fm.mcp.servers).filter((n) => fm.mcp.access(n, role) !== 'none');
+  if (!servers.length) return '';
+  const lines = servers.map((n) => {
+    const access = fm.mcp.access(n, role);
+    if (role === 'lead') {
+      const workers = fm.mcp.access(n, 'worker');
+      return `- MCP server "${n}" (${access === 'write' ? 'read and write' : 'read only'}): ${workers === 'none' ? 'the workers cannot use it: read what a task needs and put it in the task description' : workers === 'read' ? `the workers can only read it: changes there are yours (do them yourself, or ask ${userName()})` : 'the workers can use it too'}.`;
+    }
+    return `- MCP server "${n}": ${access === 'write' ? 'you may read and change it' : 'read only for you: for any change, ask the lead with send_message'}.`;
+  });
+  return `\n${lines.join('\n')}`;
 }
 
 /** Lead rules for workspace folders (config "workspaces"): tidy them through an approved plan. */
@@ -58,7 +73,7 @@ How to work
 - Decide technical details yourself. Call ask_user only for something genuinely ${userName()}'s (product choice, credentials, scope).
 - Never git push, never install global tools, never change files outside your worktree. Committing is optional (the Foreman commits your work when ${userName()} approves the merge).
 - Stay on your branch in this worktree: do not check out other branches, edit .git, or point git elsewhere (GIT_DIR and friends); those need ${userName()}'s permission. Your commits are made as AgentCraft ${fm.nameOf(agentId)} and are never signed (no -S).
-- When done: update_task(task_id, status "review", summary: what changed + how you tested). If you cannot finish: update_task(status "blocked", blocked_reason). Then end your turn.${languageRule()}
+- When done: update_task(task_id, status "review", summary: what changed + how you tested). If you cannot finish: update_task(status "blocked", blocked_reason). Then end your turn.${languageRule()}${mcpRules(fm, 'worker')}
 `.trim();
 }
 
