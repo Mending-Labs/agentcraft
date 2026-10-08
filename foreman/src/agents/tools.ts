@@ -31,6 +31,12 @@ export interface ToolHooks {
   onWaiting(agentId: string, waiting: boolean): void;
 }
 
+/**
+ * An option that reports something the user did ("Stash effectué", "Done", "C'est fait"): the
+ * question asks the user to act, so auto mode must not answer it.
+ */
+const ACTION_DONE = /(^|[^\p{L}])(effectu[ée]e?s?|faite?s?|done|completed|termin[ée]e?s?|j'ai|je l'ai|i did|i have)(?=$|[^\p{L}])/iu;
+
 /** The turn a tool server belongs to: once it is aborted, tools refuse to act. */
 export interface TurnHandle {
   signal: AbortSignal;
@@ -150,19 +156,24 @@ export function agentTools(fm: Foreman, agentId: string, role: 'lead' | 'worker'
     ),
     tool(
       'ask_user',
-      `Ask ${userName()} a question and WAIT for the answer. Only for decisions that are genuinely the user's. Put the recommended option first.`,
+      `Ask ${userName()} a question and WAIT for the answer. Only for decisions that are genuinely the user's. Put the recommended option first. ` +
+        `When you need ${userName()} to DO something (run a command, stash files, create a token...), set user_action: true: auto mode never answers those, ${userName()} does.`,
       {
         question: z.string(),
         options: z.array(z.string()).max(6).optional().describe('2-4 short choices, recommended first'),
         context: z.string().optional().describe('one or two lines of background'),
+        user_action: z.boolean().optional().describe(`true when ${userName()} must act (not just choose): never answered by auto mode`),
       },
-      async ({ question, options, context }) => {
-        // auto mode: the recommended (first) option, or let the agent decide
-        const auto = fm.autoFor('questions')
-          ? options?.length
-            ? { option: options[0]! }
-            : { text: `(auto mode) ${userName()} is not answering questions right now: decide yourself and note the assumption.` }
-          : undefined;
+      async ({ question, options, context, user_action }) => {
+        // auto mode: the recommended (first) option, or let the agent decide; never for a request
+        // the user must act on ("done" would be a lie: nobody did it)
+        const needsAction = user_action === true || (options ?? []).some((o) => ACTION_DONE.test(o));
+        const auto =
+          fm.autoFor('questions') && !needsAction
+            ? options?.length
+              ? { option: options[0]! }
+              : { text: `(auto mode) ${userName()} is not answering questions right now: decide yourself and note the assumption.` }
+            : undefined;
         const done = await askUser({ kind: 'question', question, options: options ?? [], ...(context ? { context } : {}) }, auto);
         if (done === 'stopped') return withInbox(`Your turn was stopped before ${userName()} answered.`, true);
         if (done.status === 'cancelled') return withInbox('The question was cancelled. Use your best judgement and note the assumption.');

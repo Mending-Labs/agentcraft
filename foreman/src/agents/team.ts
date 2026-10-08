@@ -672,6 +672,15 @@ export class TeamBackend implements Backend {
     return { cwd: this.fm.repos.requireWorktree(t.repoId, t.worktree).path, role: 'worker' };
   }
 
+  /**
+   * What the lead may read besides its checkout, the workspaces and memory: the workers' worktrees
+   * it reviews, and AgentCraft's config.json (no secrets in it: those live in the vault). Never the
+   * rest of AgentCraft's home (its state holds the feed, the vault file the encrypted secrets).
+   */
+  private leadExtraReads(): string[] {
+    return [path.join(this.fm.config.dataDir, 'worktrees'), path.join(this.fm.config.home, 'config.json')];
+  }
+
   /** The policy, and the user for whatever it cannot allow by itself (a permission decision). */
   private permissionGate(agentId: string, role: Role, cwd: string, turn: TurnHandle): PermissionGate {
     return async (toolName, input, signal, title) => {
@@ -680,8 +689,8 @@ export class TeamBackend implements Backend {
       const verdict = classifyToolUse(toolName, input, {
         role,
         cwd,
-        // the lead may also read the workspaces it can propose reorganisations for
-        readDirs: [this.fm.memory.dir, ...(role === 'lead' ? this.fm.workspaces() : [])],
+        // the lead may also read the workspaces, and the workers' worktrees it reviews
+        readDirs: [this.fm.memory.dir, ...(role === 'lead' ? [...this.fm.workspaces(), ...this.leadExtraReads()] : [])],
         alwaysAllow: this.fm.store.data.permissionRules[agentId] ?? [],
         mcpServer: TEAM_MCP_SERVER,
         leadReadCommands: this.cfg.leadReadCommands,
@@ -694,7 +703,8 @@ export class TeamBackend implements Backend {
       }
       // A Codex lead runs in a read-only sandbox without network: an approved network command still
       // fails there (curl: could not connect), so asking the user would only waste their time.
-      if (role === 'lead' && this.engineFor(agentId).id === 'codex' && /network access|uses the network/i.test(verdict.reason)) {
+      const gitNetwork = /\bgit(\.exe)?\b[^;|&]*\s(ls-remote|fetch|pull|clone|push)\b/i.test(typeof input.command === 'string' ? input.command : '');
+      if (role === 'lead' && this.engineFor(agentId).id === 'codex' && (gitNetwork || /network access|uses the network/i.test(verdict.reason))) {
         const message =
           'Your sandbox has no network access: this cannot work, even if approved (nobody was asked). For anything that needs the network ' +
           '(HTTP APIs, curl, Invoke-WebRequest, git fetch), create a task for a worker (workers have network access), or use your MCP tools.';
@@ -716,7 +726,7 @@ export class TeamBackend implements Backend {
           workspaces: this.fm.workspaces(),
           tool: toolName,
           ...(typeof input.command === 'string' ? { command: input.command } : {}),
-          leadRoots: [cwd, ...this.fm.workspaces(), this.fm.memory.dir],
+          leadRoots: [cwd, ...this.fm.workspaces(), this.fm.memory.dir, ...this.leadExtraReads()],
         });
         if (!risk) {
           this.fm.agentLog(agentId, 'tool', `auto mode allowed: ${describeToolCall(toolName, input)}`);

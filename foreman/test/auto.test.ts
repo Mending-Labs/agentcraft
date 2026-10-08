@@ -1,6 +1,7 @@
 // Auto mode: the Foreman answers decisions for the user (permissions except risky ones,
 // lead-approved merges with passing tests, workspace plans, questions), without a bell or toast.
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { agentTools, type ToolHooks } from '../src/agents/tools.js';
@@ -45,6 +46,13 @@ describe('autoRisk (which permission prompts still ask)', () => {
     expect(autoRisk(v, { ...lead, command: "Get-ChildItem 'D:\\Work' | Remove-Item -Recurse" })).toMatch(/Remove-Item/);
     expect(autoRisk(v, { ...lead, command: "Get-Content 'C:\\Users\\me\\.ssh\\id_rsa'" })).toMatch(/secrets file/);
     expect(autoRisk(v, { ...lead, tool: 'Bash', command: 'ls D:/Work' })).toMatch(/lead/);
+    // the workers' worktrees (under AgentCraft's home) are a root the lead reviews; the vault is not
+    const ac = path.join(os.homedir(), '.agentcraft');
+    const withWt = { ...lead, leadRoots: [...lead.leadRoots, path.join(ac, 'claude', 'worktrees'), path.join(ac, 'config.json')] };
+    expect(autoRisk(v, { ...withWt, command: `git -C '${path.join(ac, 'claude', 'worktrees', 'core', 'kit-t1')}' status --short` })).toBeUndefined();
+    expect(autoRisk(v, { ...withWt, command: `Get-Content '${path.join(ac, 'config.json')}'` })).toBeUndefined();
+    expect(autoRisk(v, { ...withWt, command: `Get-Content '${path.join(ac, 'secrets.json')}'` })).toMatch(/secrets/);
+    expect(autoRisk(v, { ...withWt, command: `Get-Content '${path.join(ac, 'claude', 'state.json')}'` })).toMatch(/home/);
   });
 
   it('keeps the risky ones for the user', () => {
@@ -98,6 +106,10 @@ describe('a Codex lead and the network', () => {
       const r = await gate('PowerShell', { command: "Invoke-WebRequest -Uri 'https://gitlab.example/api/v4/projects/1'" }, ac.signal);
       expect(r.allow).toBe(false);
       expect(r.message).toMatch(/no network access.*worker/);
+      // git over the network, even dressed up with -c core.sshCommand=...
+      const git = await gate('PowerShell', { command: "git -c 'core.sshCommand=ssh -o BatchMode=yes' ls-remote origin refs/heads/main" }, ac.signal);
+      expect(git.allow).toBe(false);
+      expect(git.message).toMatch(/no network access/);
       expect(h.fm.decisions.open()).toHaveLength(0);
     } finally {
       await h.fm.close();
@@ -136,6 +148,18 @@ describe('auto mode answers', () => {
     expect(text(r)).toMatch(/Auto mode .*answered: JSON/);
     expect(h.fm.decisions.list().at(-1)).toMatchObject({ status: 'answered', answer: { option: 'JSON' } });
     expect(h.toasts).toHaveLength(0);
+  });
+
+  it('never answers a request the user must act on (it would claim something nobody did)', async () => {
+    const tool = agentTools(h.fm, 'marlow', 'lead', hooks).find((t) => t.name === 'ask_user')!;
+    // the real case: "Stash ciblé effectué" was picked by auto mode, the stash was never done
+    const byOption = tool.handler({ question: 'Peux-tu mettre de côté les trois fichiers ?', options: ['Stash ciblé effectué', 'Je préfère committer'] });
+    await until(() => h.fm.decisions.open().length === 1);
+    const byFlag = tool.handler({ question: 'Crée le jeton GitLab', options: ['OK', 'Plus tard'], user_action: true });
+    await until(() => h.fm.decisions.open().length === 2);
+    for (const d of h.fm.decisions.open()) await h.fm.answerDecision(d.id, 0);
+    expect(text(await byOption)).toMatch(/Alex answered: Stash ciblé effectué/);
+    expect(text(await byFlag)).toMatch(/Alex answered: OK/);
   });
 
   it('tells the agent to decide when a question has no options', async () => {
