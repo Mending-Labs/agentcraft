@@ -701,6 +701,15 @@ export class TeamBackend implements Backend {
         this.fm.agentLog(agentId, 'tool', `no network for the lead: ${describeToolCall(toolName, input)}`);
         return { allow: false, message };
       }
+      // A worker changing another repository (a worktree, a branch, commits there) works around
+      // AgentCraft: the lead creates a task in that repo instead (create_task repo).
+      if (role === 'worker' && /changes a repository outside the worktree|points git at another repository/i.test(verdict.reason)) {
+        const message =
+          'You work only in your own worktree: changing another repository (a worktree, a branch, commits there) is not allowed (nobody was asked). ' +
+          'If your task needs changes in another repo, set it "blocked" with a blocked_reason naming that repo: Marlow will create a task in it.';
+        this.fm.agentLog(agentId, 'tool', `another repository: ${describeToolCall(toolName, input)}`);
+        return { allow: false, message };
+      }
       if (this.fm.autoFor('permissions')) {
         const risk = autoRisk(verdict, {
           role,

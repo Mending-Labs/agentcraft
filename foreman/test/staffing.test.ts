@@ -6,7 +6,8 @@ import { agentTools, type ToolHooks } from '../src/agents/tools.js';
 import { autoRisk } from '../src/auto.js';
 import type { Backend } from '../src/foreman.js';
 import { classifyToolUse } from '../src/policy.js';
-import { makeForeman, rmrf, tempDir, until, type Harness } from './helpers.js';
+import path from 'node:path';
+import { demoRepo, makeForeman, rmrf, tempDir, until, type Harness } from './helpers.js';
 
 const hooks: ToolHooks = { onReview() {}, onChangesRequested() {}, onTasksChanged() {}, onMergeRequested() {}, onWaiting() {} };
 const text = (r: { content: Array<{ text: string }> }) => r.content.map((c) => c.text).join('\n');
@@ -71,6 +72,57 @@ describe('the lead sizes the team', () => {
     start(['--auto']);
     const r = await tool('request_worker').handler({ worker: 'marlow', reason: 'x' });
     expect(r.isError).toBe(true);
+  });
+});
+
+describe('a goal that spans several repositories', () => {
+  it('create_task puts each task in the repo it changes', async () => {
+    const home = tempDir();
+    const h = makeForeman(home, ['--backend', 'claude']);
+    const a = await demoRepo();
+    const b = await demoRepo();
+    try {
+      const ra = await h.fm.repos.add(a);
+      const rb = await h.fm.repos.add(b);
+      h.fm.createGoal('touch both', ra.id);
+      const create = agentTools(h.fm, 'marlow', 'lead', hooks).find((t) => t.name === 'create_task')!;
+      await create.handler({ title: 'in a', description: 'x' });
+      const r = await create.handler({ title: 'in b', description: 'x', repo: rb.path });
+      expect(text(r)).toMatch(/Created t2/);
+      expect(h.fm.tasks.get('t1')!.repoId).toBe(ra.id);
+      expect(h.fm.tasks.get('t2')!.repoId).toBe(rb.id);
+      const bad = await create.handler({ title: 'nowhere', description: 'x', repo: 'nope' });
+      expect(bad.isError).toBe(true);
+      expect(text(bad)).toMatch(new RegExp(`Repos: .*${ra.id}`));
+    } finally {
+      await h.fm.close();
+      rmrf(home);
+      rmrf(path.dirname(a));
+      rmrf(path.dirname(b));
+    }
+  });
+
+  it('a worker changing another repository is refused at once, nobody asked', async () => {
+    const home = tempDir();
+    const h = makeForeman(home, ['--backend', 'claude', '--auto']);
+    try {
+      const { ClaudeBackend } = await import('../src/agents/claude/index.js');
+      const team = new ClaudeBackend(h.fm, h.cfg.claude, { queryFn: (() => undefined) as never, skipAuthCheck: true });
+      const ac = new AbortController();
+      const gate = (team as unknown as { permissionGate(a: string, r: string, c: string, t: unknown): (t: string, i: unknown, s: AbortSignal) => Promise<{ allow: boolean; message?: string }> }).permissionGate(
+        'juniper',
+        'worker',
+        process.cwd(),
+        { signal: ac.signal, reason: () => undefined },
+      );
+      const r = await gate('Bash', { command: 'git -C D:/Somewhere/other-repo worktree add -b mine C:/tmp/wt' }, ac.signal);
+      expect(r.allow).toBe(false);
+      expect(r.message).toMatch(/only in your own worktree.*blocked/s);
+      expect(h.fm.decisions.open()).toHaveLength(0);
+    } finally {
+      await h.fm.close();
+      rmrf(home);
+    }
   });
 });
 

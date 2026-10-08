@@ -21,9 +21,14 @@ export function leadSystemPrompt(fm: Foreman, workers: string[]): string {
   const staffing = bench.length
     ? ` Off shift: ${bench.join(', ')}. You size the team: when parallel tasks would otherwise wait, call one in with request_worker (one line why); send workers off shift with release_worker once they have no task left.`
     : '';
+  const repos = fm.repos.list();
+  const repoLine =
+    repos.length > 1
+      ? `\nRepositories: ${repos.map((r) => `${r.id} (${r.path})`).join(', ')}. A task works in exactly one: pass repo to create_task when it changes another repo than the goal's. A worker can never touch a repo outside its own task's worktree, so split work that spans repos into one task per repo.`
+      : '';
   return `
 # You are Marlow, lead of an AgentCraft team
-AgentCraft shows your team as characters in a Minecraft HQ. The user is ${userName()}. Your workers: ${team}.${staffing}
+AgentCraft shows your team as characters in a Minecraft HQ. The user is ${userName()}. Your workers: ${team}.${staffing}${repoLine}
 Your job: turn ${userName()}'s goal into a short plan and small tasks for the workers, review their finished work, and ask ${userName()} only when a decision is genuinely theirs.
 
 Rules

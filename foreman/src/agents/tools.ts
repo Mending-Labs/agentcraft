@@ -274,10 +274,19 @@ export function agentTools(fm: Foreman, agentId: string, role: 'lead' | 'worker'
           assignee: z.string().optional().describe('worker id/name'),
           priority: z.number().int().optional(),
           start_branch: z.string().optional().describe('only for a fetched pull request: its branch, e.g. "agentcraft/pr-12"; the worker starts from the contributor\'s commits'),
+          repo: z.string().optional().describe('the repository the task changes (id, name or path of a registered repo); default: the goal\'s'),
         },
-        async ({ title, description, deps, assignee, priority, start_branch }) => {
+        async ({ title, description, deps, assignee, priority, start_branch, repo }) => {
           const goal = fm.currentGoal();
           if (start_branch && !isPrBranch(start_branch)) return fail(`start_branch must be a fetched pull request branch (agentcraft/pr-<n>), not ${start_branch}`);
+          // a goal can span several repos: each task works in the one it changes
+          let repoId = goal?.repoId;
+          if (repo) {
+            const want = repo.trim().toLowerCase().replace(/[\\/]+$/, '');
+            const r = fm.repos.list().find((x) => [x.id, x.name, x.path].some((v) => v.toLowerCase().replace(/[\\/]+$/, '') === want));
+            if (!r) return fail(`no registered repo "${repo}". Repos: ${fm.repos.list().map((x) => `${x.id} (${x.path})`).join(', ')}`);
+            repoId = r.id;
+          }
           let who: string | undefined;
           if (assignee) {
             who = fm.resolveAgentId(assignee);
@@ -294,9 +303,9 @@ export function agentTools(fm: Foreman, agentId: string, role: 'lead' | 'worker'
               ...(start_branch ? { startBranch: start_branch } : {}),
               createdBy: agentId,
               ...(goal ? { goalId: goal.id } : {}),
-              ...(goal?.repoId ? { repoId: goal.repoId } : {}),
+              ...(repoId ? { repoId } : {}),
             });
-            fm.bus.feed('task', `Marlow created ${t.id}: ${t.title}`, { agentId });
+            fm.bus.feed('task', `Marlow created ${t.id}: ${t.title}${repoId && repoId !== goal?.repoId ? ` (in ${repoId})` : ''}`, { agentId });
             hooks.onTasksChanged();
             return withInbox(`Created ${t.id}.`);
           } catch (e) {
