@@ -179,6 +179,7 @@
   "agentcraft.console.err_decisions_open": "%1$s decisions are open (%2$s): %3$s",
   "agentcraft.console.err_diff_usage": "usage: /diff <worktree> or /diff @agent%s",
   "agentcraft.console.err_goal_after": "type the goal after /goal",
+  "agentcraft.console.err_looks_like_secret": "This looks like a secret (a token or key): it is not sent. Store it with /secret set NAME instead",
   "agentcraft.console.err_message_for": "type a message for @%s",
   "agentcraft.console.err_no_agent": "no agent named @%1$s%2$s",
   "agentcraft.console.err_no_decision": "no decision %1$s (open: %2$s)",

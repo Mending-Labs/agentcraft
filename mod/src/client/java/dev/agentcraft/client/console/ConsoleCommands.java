@@ -156,6 +156,10 @@ public final class ConsoleCommands {
 		if (trimmed.isEmpty()) {
 			return new Empty();
 		}
+		// a token pasted into a goal or a message would reach the agents, the models and the logs
+		if (looksLikeSecret(trimmed)) {
+			return new Invalid(Tr.t("console.err_looks_like_secret"));
+		}
 		if (trimmed.startsWith("@")) {
 			return parseMessage(trimmed, s);
 		}
@@ -165,17 +169,41 @@ public final class ConsoleCommands {
 		return followUpOrGoal(trimmed, s);
 	}
 
-	/** A goal counts as the current conversation while it runs and for this long after it ended. */
-	private static final long FOLLOW_UP_MS = 30 * 60 * 1000L;
+	/** Well-known token shapes (Seed, Anthropic, OpenAI, GitHub, GitLab, Slack, AWS, private keys). */
+	private static final java.util.regex.Pattern SECRET = java.util.regex.Pattern.compile(
+		"\\b(seed_mcp_[A-Za-z0-9_-]{12,}|sk-ant-[A-Za-z0-9_-]{20,}|sk-(proj-)?[A-Za-z0-9_-]{32,}|gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}"
+			+ "|glpat-[A-Za-z0-9_-]{20,}|xox[abprs]-[A-Za-z0-9-]{20,}|AKIA[0-9A-Z]{16})\\b|-----BEGIN [A-Z ]*PRIVATE KEY-----");
+
+	static boolean looksLikeSecret(String text) {
+		return SECRET.matcher(text).find();
+	}
+
+	/**
+	 * A goal stays the current conversation while it runs and for this long after the last exchange
+	 * with the lead (a message either way, the goal itself), Foreman restarts included.
+	 */
+	private static final long FOLLOW_UP_MS = 3 * 60 * 60 * 1000L;
 
 	/** Plain text: the lead's follow-up on the current goal if there is one, else a new goal. */
 	private static Intent followUpOrGoal(String text, ForemanState s) {
 		Protocol.Goal g = s.goal();
 		if (g != null && (g.status() == Protocol.GoalStatus.PLANNING || g.status() == Protocol.GoalStatus.ACTIVE
-			|| System.currentTimeMillis() - g.updatedAt() < FOLLOW_UP_MS)) {
+			|| System.currentTimeMillis() - lastExchange(g, s) < FOLLOW_UP_MS)) {
 			return new FollowUp(text, g.text());
 		}
 		return goal(text, s);
+	}
+
+	/** When the user and the lead last talked about the current goal (feed messages since it started). */
+	private static long lastExchange(Protocol.Goal g, ForemanState s) {
+		long last = g.updatedAt();
+		for (Protocol.FeedItem f : s.feed()) {
+			boolean talk = "marlow".equals(f.agentId()) || "user".equals(f.agentId()) || "user".equals(f.to()) || "marlow".equals(f.to());
+			if (talk && f.ts() >= g.createdAt()) {
+				last = Math.max(last, f.ts());
+			}
+		}
+		return last;
 	}
 
 	private static Intent goal(String text, ForemanState s) {
