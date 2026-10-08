@@ -237,9 +237,10 @@ describe('members signed in by the launcher', () => {
     users.seedLauncherMembers([{ name: 'Quentin', role: 'admin', minecraft: ['8667ba71-b85a-4004-af54-457a9734eed7', '00000000000000000000000000000009'] }]);
     expect(users.authenticate(signLauncherPass(KEY, QUENTIN))).toMatchObject({ id: 'quentin', role: 'admin' });
     expect(users.authenticate(signLauncherPass(KEY, { sub: 'usr_9', name: 'PoPoAlt', mc: ['00000000000000000000000000000009'] }))).toMatchObject({ id: 'quentin' });
-    // seeding again changes nothing; a bad UUID is refused
+    // the declaration is the whole list: an account taken out of it no longer signs in as Quentin
     users.seedLauncherMembers([{ name: 'Quentin', role: 'admin', minecraft: ['8667ba71b85a4004af54457a9734eed7'] }]);
-    expect(users.get('quentin')!.minecraft).toHaveLength(2);
+    expect(users.get('quentin')!.minecraft).toEqual(['8667ba71b85a4004af54457a9734eed7']);
+    expect(users.authenticate(signLauncherPass(KEY, { sub: 'usr_9', name: 'PoPoAlt', mc: ['00000000000000000000000000000009'] }))!.id).not.toBe('quentin');
     expect(() => users.seedLauncherMembers([{ name: 'Deo', minecraft: ['nope'] }])).toThrow(/32 hex/);
   });
 

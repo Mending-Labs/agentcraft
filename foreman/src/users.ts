@@ -176,7 +176,8 @@ export class UserStore {
 
   /**
    * Config "launcherMembers": people declared up front, by their Minecraft accounts. Creates or
-   * updates each (name, role, accounts); an account declared here leaves any other member.
+   * updates each (name, role, accounts - exactly those declared); an account declared here leaves
+   * any other member.
    */
   seedLauncherMembers(list: Array<{ name: string; role?: UserRole; minecraft?: string[] }>): void {
     if (!list.length) return;
@@ -200,8 +201,10 @@ export class UserStore {
         users.push(u);
         changed = true;
       }
-      const merged = [...new Set([...(u.minecraft ?? []), ...mc])];
-      if (u.role !== role || u.name !== p.name.trim() || merged.length !== (u.minecraft ?? []).length) {
+      // the declared accounts are the whole list: one removed from the config leaves the member
+      const merged = [...new Set(mc)];
+      const same = merged.length === (u.minecraft ?? []).length && merged.every((m) => u!.minecraft!.includes(m));
+      if (u.role !== role || u.name !== p.name.trim() || !same) {
         u.role = role;
         u.name = p.name.trim();
         u.minecraft = merged;
