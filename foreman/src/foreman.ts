@@ -141,6 +141,7 @@ export class Foreman {
     this.status.auto = this.auto.enabled;
     this.secrets = new SecretVault(opts.config.home);
     this.users = new UserStore(opts.config.home);
+    this.users.launcherAdmins = opts.config.launcherAdmins;
     this.accounts = new Accounts(opts.config.home, this.secrets, this.users, ownerName);
     this.mcp = new McpCatalog(opts.config.mcp ?? {}, this.log, fetch, (n) => this.secrets.get(n), () => this.secrets.names());
     const secretNames = this.secrets.names();

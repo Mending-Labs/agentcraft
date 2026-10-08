@@ -8,11 +8,14 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import net.fabricmc.loader.api.FabricLoader;
 import org.jspecify.annotations.Nullable;
 
 /**
  * A shared Foreman to connect to instead of the local one: {@code AGENTCRAFT_FOREMAN_URL} +
- * {@code AGENTCRAFT_TOKEN}, else {@code <AGENTCRAFT_HOME or ~/.agentcraft>/remote.json}
+ * {@code AGENTCRAFT_TOKEN}, else {@code agentcraft-remote.json} in the game folder (written by the Mending Labs
+ * launcher for the AgentCraft instance, with a pass signed for the player), else
+ * {@code <AGENTCRAFT_HOME or ~/.agentcraft>/remote.json}
  * ({@code {"url": "ws://host:7878", "token": "acu_..."}}). The token is the member's own; it is
  * sent as a header, never shown.
  */
@@ -21,8 +24,12 @@ public record Remote(URI uri, @Nullable String token) {
 		String url = ClientEnv.raw("AGENTCRAFT_FOREMAN_URL");
 		String token = ClientEnv.raw("AGENTCRAFT_TOKEN");
 		if (url == null) {
-			String home = ClientEnv.raw("AGENTCRAFT_HOME");
-			Path file = (home != null ? Path.of(home) : Path.of(System.getProperty("user.home"), ".agentcraft")).resolve("remote.json");
+			// the launcher's instance ships its own (a pass signed for the player), else the computer's
+			Path file = FabricLoader.getInstance().getGameDir().resolve("agentcraft-remote.json");
+			if (!Files.isRegularFile(file)) {
+				String home = ClientEnv.raw("AGENTCRAFT_HOME");
+				file = (home != null ? Path.of(home) : Path.of(System.getProperty("user.home"), ".agentcraft")).resolve("remote.json");
+			}
 			if (!Files.isRegularFile(file)) {
 				return null;
 			}

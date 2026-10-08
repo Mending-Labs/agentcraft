@@ -11,7 +11,7 @@ import { ServerMessage, type ServerMessage as SM } from '../src/protocol.js';
 import { SecretVault } from '../src/secrets.js';
 import { ForemanServer } from '../src/server.js';
 import { runAs } from '../src/user.js';
-import { allowed, UserStore } from '../src/users.js';
+import { allowed, signLauncherPass, UserStore } from '../src/users.js';
 import { demoRepo, makeForeman, rmrf, tempDir, until } from './helpers.js';
 
 const CLAUDE_TOKEN = `sk-ant-oat01-${'a'.repeat(40)}`;
@@ -206,4 +206,45 @@ describe('a shared Foreman over WebSocket', () => {
       await h.fm.close();
     }
   }, 120_000);
+});
+
+describe('members signed in by the launcher', () => {
+  const KEY = Buffer.from('k'.repeat(48), 'utf8');
+  const QUENTIN = { sub: 'usr_1', name: 'PoPo', mc: ['8667ba71-b85a-4004-af54-457a9734eed7'] };
+
+  it('a valid pass creates the member once; any of their Minecraft accounts finds it again', () => {
+    const home = tempDir();
+    cleanup.push(home);
+    fs.writeFileSync(path.join(home, 'launcher.key'), KEY.toString('utf8'));
+    const users = new UserStore(home);
+    users.launcherAdmins = ['8667BA71-B85A-4004-AF54-457A9734EED7'];
+    expect(users.enabled).toBe(true);
+    const a = users.authenticate(signLauncherPass(KEY, QUENTIN))!;
+    expect(a).toMatchObject({ id: 'popo', name: 'PoPo', role: 'admin', launcherId: 'usr_1', minecraft: ['8667ba71b85a4004af54457a9734eed7'] });
+    // another Minecraft account of the same launcher account: same member, account remembered
+    const b = users.authenticate(signLauncherPass(KEY, { ...QUENTIN, mc: ['00000000000000000000000000000001'] }))!;
+    expect(b.id).toBe('popo');
+    expect(users.get('popo')!.minecraft).toHaveLength(2);
+    // someone else, same display name: their own member, not an admin
+    const c = users.authenticate(signLauncherPass(KEY, { sub: 'usr_2', name: 'PoPo', mc: [] }))!;
+    expect(c).toMatchObject({ id: 'popo-2', role: 'member' });
+    expect(users.list()).toHaveLength(2);
+  });
+
+  it('refuses a forged, expired or foreign pass', () => {
+    const home = tempDir();
+    cleanup.push(home);
+    fs.writeFileSync(path.join(home, 'launcher.key'), KEY.toString('utf8'));
+    const users = new UserStore(home);
+    expect(users.authenticate(signLauncherPass(Buffer.from('x'.repeat(48)), QUENTIN))).toBeUndefined();
+    expect(users.authenticate(signLauncherPass(KEY, QUENTIN, 60, Date.now() - 3_600_000))).toBeUndefined();
+    const good = signLauncherPass(KEY, QUENTIN);
+    const [head, , sig] = good.split('.');
+    const tampered = `${head}.${Buffer.from(JSON.stringify({ v: 1, aud: 'agentcraft', sub: 'usr_1', name: 'PoPo', mc: [], iat: 1, exp: 9e9 })).toString('base64url')}.${sig}`;
+    expect(users.authenticate(tampered)).toBeUndefined();
+    expect(users.list()).toHaveLength(0);
+    // no key on this Foreman: launcher passes mean nothing
+    fs.rmSync(path.join(home, 'launcher.key'));
+    expect(users.authenticate(good)).toBeUndefined();
+  });
 });

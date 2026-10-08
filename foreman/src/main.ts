@@ -29,14 +29,17 @@ function userCommand(cfg: Config, args: string[]): void {
     } else if (cmd === 'role' && name && roleArg) {
       const m = users.setRole(name, roleArg as UserRole);
       console.log(`${m.name}: ${m.role}`);
+    } else if (cmd === 'minecraft' && name) {
+      const m = users.setMinecraft(name, rest.filter((a) => !a.startsWith('--')));
+      console.log(`${m.name}: ${(m.minecraft ?? []).join(', ') || '(no Minecraft account)'}`);
     } else if (cmd === 'remove' && name) {
       console.log(users.remove(name) ? `${name} removed` : `no member ${name}`);
     } else if (cmd === 'list' || !cmd) {
       const all = users.list();
       if (!all.length) console.log('no members: single-user Foreman (loopback only, no token)');
-      for (const u of all) console.log(`${u.name.padEnd(16)} ${u.role}`);
+      for (const u of all) console.log(`${u.name.padEnd(16)} ${u.role.padEnd(8)} ${(u.minecraft ?? []).length} Minecraft account(s)`);
     } else {
-      console.log(`usage: user add <name> [${ROLES.join('|')}] | user role <name> <role> | user remove <name> | user list`);
+      console.log(`usage: user add <name> [${ROLES.join('|')}] | user role <name> <role> | user minecraft <name> <uuid>... | user remove <name> | user list`);
       process.exitCode = 1;
     }
   } catch (e) {
@@ -73,9 +76,10 @@ export async function main(argv: string[]): Promise<void> {
   const cfg = loadConfig(argv);
   const log = consoleLogger('foreman', { debug: cfg.debug, quiet: cfg.quiet });
   const users = new UserStore(cfg.home);
+  users.launcherAdmins = cfg.launcherAdmins;
   // a Foreman other machines can reach must know who is talking to it
   if (!LOOPBACK.test(cfg.host) && !users.enabled) {
-    log.error(`--host ${cfg.host} makes the Foreman reachable from other machines: add its members first (npm start -- user add <name> admin)`);
+    log.error(`--host ${cfg.host} makes the Foreman reachable from other machines: add its members first (npm start -- user add <name> admin) or a launcher key (${cfg.home}/launcher.key)`);
     process.exitCode = 1;
     return;
   }
