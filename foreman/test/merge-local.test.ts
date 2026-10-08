@@ -51,6 +51,26 @@ describe('merging into a checkout with the user\'s own changes', () => {
     expect((await git(repoPath, ['status', '--porcelain', '--untracked-files=no'])).stdout.trim()).toBe('');
   });
 
+  it('the lead cannot ask for a merge again while one runs for the task', async () => {
+    const { t, d } = await setup();
+    h.fm.decisions.answer(d.id, 'Merge'); // answered, its merge not finished (not settled)
+    const { agentTools } = await import('../src/agents/tools.js');
+    const hooks = { onReview() {}, onChangesRequested() {}, onTasksChanged() {}, onMergeRequested() {}, onWaiting() {} };
+    const req = agentTools(h.fm, 'marlow', 'lead', hooks).find((x) => x.name === 'request_merge')!;
+    const r = await req.handler({ task_id: t.id, summary: 'again' });
+    expect(r.content[0]!.text).toMatch(new RegExp(`${d.id} for ${t.id} is already being merged`));
+    expect(h.fm.decisions.list().filter((x) => x.kind === 'merge' && x.taskId === t.id)).toHaveLength(1);
+  });
+
+  it('a merge closes the duplicate merge decisions of the same task', async () => {
+    const { t, d } = await setup();
+    const dup = h.fm.createDecision({ agentId: 'marlow', kind: 'merge', question: 'Merge again?', options: [...MERGE_OPTIONS], taskId: t.id, repoId: d.repoId!, worktree: d.worktree! });
+    await h.fm.answerDecision(d.id, MERGE_LOCAL_OPTIONS[0]);
+    await until(() => h.fm.tasks.get(t.id)!.status === 'done');
+    expect(h.fm.decisions.get(dup.id)!.status).toBe('cancelled');
+    expect(h.fm.decisions.get(dup.id)!.context).toMatch(/already merged/);
+  });
+
   it('stash, merge, restore: the merge lands and the user\'s change is back, uncommitted', async () => {
     const { t, d } = await setup();
     await h.fm.answerDecision(d.id, MERGE_LOCAL_OPTIONS[1]);

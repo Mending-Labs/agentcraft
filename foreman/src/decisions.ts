@@ -46,6 +46,11 @@ export class DecisionQueue {
     return this.all.filter((d) => d.status === 'open');
   }
 
+  /** Open decisions, and answered ones whose side effects (e.g. the merge) are still running. */
+  pending(): Decision[] {
+    return this.all.filter((d) => d.status === 'open' || this.unsettled.has(d.id));
+  }
+
   get(id: string): Decision | undefined {
     return this.all.find((d) => d.id === id);
   }

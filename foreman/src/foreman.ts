@@ -531,6 +531,8 @@ export class Foreman {
         if (task) this.tasks.setStatus(task.id, 'done', { viaMerge: true, force: task.status !== 'review' });
         this.bus.feed('merge', `Merged ${res.branch} into ${res.base} (${res.sha}, ${res.files} file${res.files === 1 ? '' : 's'})`, { agentId: d.agentId });
         this.notify('info', `Merged ${res.branch} into ${res.base}`);
+        // a duplicate merge request for the same task (asked again while this one ran) is now moot
+        if (task) for (const other of this.decisions.open()) if (other.kind === 'merge' && other.taskId === task.id && other.id !== d.id) this.decisions.cancel(other.id, `${task.id} is already merged`);
         if (stashed) await this.restoreStash(d, label);
       } catch (e) {
         if (stashed) await this.restoreStash(d, label);
