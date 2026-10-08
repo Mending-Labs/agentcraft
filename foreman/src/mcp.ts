@@ -10,6 +10,10 @@
 // name (get_, list_, search_, read_, find_...). Claude agents: the policy allows or refuses each call
 // (policy.ts, PolicyContext.mcp). Codex agents: the server is added to the thread config, limited to
 // its read-only tools (enabled_tools) for "read".
+//
+// One token per project (Seed: a token gives access to one project): "secretPrefix" turns the entry
+// into a template, and every secret named <prefix><PROJECT> (/secret set SEED_MCP_BANANA) becomes
+// its own server "<name>_<project>" (seed_banana) with that token and the template's access.
 import type { Logger } from './context.js';
 
 export type McpAccess = 'none' | 'read' | 'write';
@@ -17,6 +21,10 @@ export type McpAccess = 'none' | 'read' | 'write';
 export interface McpServerConfig {
   url: string;
   bearerTokenEnvVar?: string;
+  /** template: one server per secret named <secretPrefix><PROJECT> */
+  secretPrefix?: string;
+  /** set on a server made from a template: the project part of its secret's name */
+  project?: string;
   lead: McpAccess;
   workers: McpAccess;
 }
@@ -32,9 +40,13 @@ export function parseMcp(v: unknown): Record<string, McpServerConfig> {
     if (!/^[A-Za-z0-9_-]+$/.test(name) || name === 'agentcraft') throw new Error(`bad MCP server name "${name}" in config.json "mcp"`);
     const o = (raw ?? {}) as Record<string, unknown>;
     if (typeof o.url !== 'string' || !/^https?:\/\//.test(o.url)) throw new Error(`MCP server "${name}" needs an http(s) "url"`);
+    if (o.secretPrefix !== undefined && (typeof o.secretPrefix !== 'string' || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(o.secretPrefix))) {
+      throw new Error(`MCP server "${name}": "secretPrefix" must look like SEED_MCP_`);
+    }
     out[name] = {
       url: o.url,
       ...(typeof o.bearerTokenEnvVar === 'string' ? { bearerTokenEnvVar: o.bearerTokenEnvVar } : {}),
+      ...(typeof o.secretPrefix === 'string' ? { secretPrefix: o.secretPrefix } : {}),
       lead: access(o.lead),
       workers: access(o.workers),
     };
@@ -53,11 +65,14 @@ export class McpCatalog {
   private pending = new Map<string, Promise<void>>();
 
   constructor(
-    readonly servers: Record<string, McpServerConfig>,
+    /** config.json "mcp" (templates included) */
+    readonly config: Record<string, McpServerConfig>,
     private log: Logger,
     private fetchFn: typeof fetch = fetch,
     /** a stored secret by name (the vault); checked before the environment */
     private secret: (name: string) => string | undefined = () => undefined,
+    /** names of the stored secrets (the vault), for the per-project templates */
+    private secretNames: () => string[] = () => [],
   ) {
     this.captureEnv();
   }
@@ -65,18 +80,40 @@ export class McpCatalog {
   /** Tokens taken out of the Foreman's environment (see captureEnv). */
   private envTokens = new Map<string, string>();
 
+  /** The servers: the plain entries, and one per project secret for each template. */
+  get servers(): Record<string, McpServerConfig> {
+    const out: Record<string, McpServerConfig> = {};
+    for (const [name, s] of Object.entries(this.config)) {
+      if (!s.secretPrefix) {
+        out[name] = s;
+        continue;
+      }
+      const prefix = s.secretPrefix;
+      const names = new Set([...this.secretNames(), ...this.envTokens.keys()]);
+      for (const secret of [...names].sort()) {
+        if (!secret.toUpperCase().startsWith(prefix.toUpperCase()) || secret.length === prefix.length) continue;
+        const project = secret.slice(prefix.length).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+        if (!project) continue;
+        const { secretPrefix: _template, ...rest } = s;
+        out[`${name}_${project}`] = { ...rest, bearerTokenEnvVar: secret, project };
+      }
+    }
+    return out;
+  }
+
   /**
    * Move the token variables out of process.env into memory: nothing the Foreman starts (agents,
    * their tests, git) can inherit them any more.
    */
   private captureEnv(): void {
-    for (const v of this.tokenVars()) {
-      for (const k of Object.keys(process.env)) {
-        if (k.toUpperCase() !== v.toUpperCase()) continue;
-        const val = process.env[k];
-        if (val) this.envTokens.set(v, val);
-        delete process.env[k];
-      }
+    const exact = new Set(Object.values(this.config).flatMap((s) => (s.bearerTokenEnvVar ? [s.bearerTokenEnvVar.toUpperCase()] : [])));
+    const prefixes = Object.values(this.config).flatMap((s) => (s.secretPrefix ? [s.secretPrefix.toUpperCase()] : []));
+    for (const k of Object.keys(process.env)) {
+      const up = k.toUpperCase();
+      if (!exact.has(up) && !prefixes.some((p) => up.startsWith(p))) continue;
+      const val = process.env[k];
+      if (val) this.envTokens.set(up, val);
+      delete process.env[k];
     }
   }
 
@@ -84,7 +121,7 @@ export class McpCatalog {
   token(s: McpServerConfig): string | undefined {
     if (!s.bearerTokenEnvVar) return undefined;
     this.captureEnv();
-    return this.secret(s.bearerTokenEnvVar) ?? this.envTokens.get(s.bearerTokenEnvVar);
+    return this.secret(s.bearerTokenEnvVar) ?? this.envTokens.get(s.bearerTokenEnvVar.toUpperCase());
   }
 
   /** Names of the token variables: kept out of every agent's environment. */
@@ -95,8 +132,15 @@ export class McpCatalog {
   /** `env` without the token variables (an agent could otherwise read a token and bypass its access). */
   scrub(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
     const vars = new Set(this.tokenVars().map((v) => v.toUpperCase()));
-    if (!vars.size) return env;
-    return Object.fromEntries(Object.entries(env).filter(([k]) => !vars.has(k.toUpperCase())));
+    const prefixes = Object.values(this.config).flatMap((s) => (s.secretPrefix ? [s.secretPrefix.toUpperCase()] : []));
+    if (!vars.size && !prefixes.length) return env;
+    return Object.fromEntries(Object.entries(env).filter(([k]) => !vars.has(k.toUpperCase()) && !prefixes.some((p) => k.toUpperCase().startsWith(p))));
+  }
+
+  /** Environment patterns Codex must keep out of its shells (token names, template prefixes). */
+  envExcludes(): string[] {
+    const prefixes = Object.values(this.config).flatMap((s) => (s.secretPrefix ? [`${s.secretPrefix}*`] : []));
+    return [...new Set([...this.tokenVars(), ...prefixes])];
   }
 
   /** Forget a server's catalogue (its token changed): the next load() fetches it again. */

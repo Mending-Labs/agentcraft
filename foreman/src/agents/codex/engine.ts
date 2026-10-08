@@ -182,7 +182,7 @@ export class CodexEngine implements Engine {
       include_apps_instructions: false,
       // Preserve both the git-safety variables Codex normally filters and any values isolated
       // for the app-server itself (LOCALAPPDATA on Windows).
-      shell_environment_policy: { set: { ...envDelta(spec.env), ...envDelta(spec.env, serverEnv) }, exclude: this.fm.mcp.tokenVars() },
+      shell_environment_policy: { set: { ...envDelta(spec.env), ...envDelta(spec.env, serverEnv) }, exclude: this.fm.mcp.envExcludes() },
       sandbox_workspace_write: { writable_roots: spec.writableRoots ?? [], network_access: false },
       ...(effort ? { model_reasoning_effort: effort } : {}),
     };

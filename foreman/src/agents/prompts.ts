@@ -34,16 +34,24 @@ Rules
 /** What an agent may do with the user's own MCP servers (config "mcp"). */
 function mcpRules(fm: Foreman, role: 'lead' | 'worker'): string {
   const servers = Object.keys(fm.mcp.servers).filter((n) => fm.mcp.access(n, role) !== 'none');
-  if (!servers.length) return '';
+  // per-project servers (one token per project): how the user adds a project the team cannot reach yet
+  const templates = Object.entries(fm.mcp.config).filter(([, s]) => s.secretPrefix && (role === 'lead' ? s.lead : s.workers) !== 'none');
+  const howToAdd = templates.map(
+    ([name, s]) =>
+      `- "${name}" has one server per project. For a project not listed here, ask ${userName()} to store its token in game with /secret set ${s.secretPrefix}<PROJECT> (a masked field): never ask for a token in a message.`,
+  );
+  if (!servers.length) return howToAdd.length ? `\n${howToAdd.join('\n')}` : '';
   const lines = servers.map((n) => {
     const access = fm.mcp.access(n, role);
+    const project = fm.mcp.servers[n]?.project;
+    const label = project ? `MCP server "${n}" (project ${project})` : `MCP server "${n}"`;
     if (role === 'lead') {
       const workers = fm.mcp.access(n, 'worker');
-      return `- MCP server "${n}" (${access === 'write' ? 'read and write' : 'read only'}): ${workers === 'none' ? 'the workers cannot use it: read what a task needs and put it in the task description' : workers === 'read' ? `the workers can only read it: changes there are yours (do them yourself, or ask ${userName()})` : 'the workers can use it too'}.`;
+      return `- ${label} (${access === 'write' ? 'read and write' : 'read only'}): ${workers === 'none' ? 'the workers cannot use it: read what a task needs and put it in the task description' : workers === 'read' ? `the workers can only read it: changes there are yours (do them yourself, or ask ${userName()})` : 'the workers can use it too'}.`;
     }
-    return `- MCP server "${n}": ${access === 'write' ? 'you may read and change it' : 'read only for you: for any change, ask the lead with send_message'}.`;
+    return `- ${label}: ${access === 'write' ? 'you may read and change it' : 'read only for you: for any change, ask the lead with send_message'}.`;
   });
-  return `\n${lines.join('\n')}`;
+  return `\n${[...lines, ...howToAdd].join('\n')}`;
 }
 
 /** Lead rules for workspace folders (config "workspaces"): tidy them through an approved plan. */

@@ -120,7 +120,7 @@ export class Foreman {
     this.auto = { ...opts.config.auto };
     this.status.auto = this.auto.enabled;
     this.secrets = new SecretVault(opts.config.home);
-    this.mcp = new McpCatalog(opts.config.mcp ?? {}, this.log, fetch, (n) => this.secrets.get(n));
+    this.mcp = new McpCatalog(opts.config.mcp ?? {}, this.log, fetch, (n) => this.secrets.get(n), () => this.secrets.names());
     const secretNames = this.secrets.names();
     if (secretNames.length) this.status.secrets = secretNames;
     if (opts.config.backend === 'sim') this.status.message = 'Simulated team (sim backend)';

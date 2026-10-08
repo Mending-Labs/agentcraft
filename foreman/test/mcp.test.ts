@@ -75,6 +75,40 @@ describe('McpCatalog', () => {
   });
 });
 
+describe('one server per project (secretPrefix)', () => {
+  const TPL = { seed: { url: 'https://seed.example/api/mcp', secretPrefix: 'AC_TPL_SEED_', lead: 'write', workers: 'read' } };
+
+  afterEach(() => {
+    delete process.env.AC_TPL_SEED_OTHER;
+  });
+
+  it('turns every secret <prefix><PROJECT> into its own server with that token', () => {
+    const vault = new Map([['AC_TPL_SEED_BANANA', 'tok-banana'], ['AC_TPL_SEED_MY_SITE', 'tok-site'], ['UNRELATED', 'x']]);
+    const cat = new McpCatalog(parseMcp(TPL), silentLogger, fetch, (n) => vault.get(n), () => [...vault.keys()]);
+    expect(Object.keys(cat.servers)).toEqual(['seed_banana', 'seed_my-site']);
+    expect(cat.servers.seed_banana).toMatchObject({ project: 'banana', bearerTokenEnvVar: 'AC_TPL_SEED_BANANA', lead: 'write', workers: 'read' });
+    expect(cat.forRole('worker').map(([n, , t]) => [n, t])).toEqual([['seed_banana', 'tok-banana'], ['seed_my-site', 'tok-site']]);
+    expect(cat.access('seed_banana', 'lead')).toBe('write');
+    expect(cat.envExcludes()).toContain('AC_TPL_SEED_*');
+  });
+
+  it('takes project tokens out of the environment too, and scrubs the whole prefix', () => {
+    process.env.AC_TPL_SEED_OTHER = 'tok-env';
+    const cat = new McpCatalog(parseMcp(TPL), silentLogger);
+    expect(process.env.AC_TPL_SEED_OTHER).toBeUndefined();
+    expect(cat.forRole('lead').map(([n, , t]) => [n, t])).toEqual([['seed_other', 'tok-env']]);
+    expect(cat.scrub({ AC_TPL_SEED_ANY: 'x', PATH: 'p' })).toEqual({ PATH: 'p' });
+  });
+
+  it('policy: a project server follows the template access', () => {
+    const vault = new Map([['AC_TPL_SEED_BANANA', 'tok']]);
+    const cat = new McpCatalog(parseMcp(TPL), silentLogger, fetch, (n) => vault.get(n), () => [...vault.keys()]);
+    const worker = { role: 'worker' as const, cwd: process.cwd(), mcp: { access: (s: string) => cat.access(s, 'worker'), isReadOnly: (s: string, t: string) => cat.isReadOnly(s, t) } };
+    expect(classifyToolUse('mcp__seed_banana__get_goal', {}, worker).action).toBe('allow');
+    expect(classifyToolUse('mcp__seed_banana__update_goal', {}, worker).action).toBe('deny');
+  });
+});
+
 describe('policy for MCP servers given to the team', () => {
   const cat = new McpCatalog(parseMcp(SEED), silentLogger);
   const ctx = (role: 'lead' | 'worker') => ({ role, cwd: process.cwd(), mcp: { access: (s: string) => cat.access(s, role), isReadOnly: (s: string, t: string) => cat.isReadOnly(s, t) } });

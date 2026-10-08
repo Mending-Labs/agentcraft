@@ -305,6 +305,11 @@ tracker, say), declare it in `config.json` with the access each role gets:
                    "lead": "write", "workers": "read" } }
 ```
 
+One token per project (a tracker whose tokens open a single project): give the entry a
+`"secretPrefix": "SEED_MCP_"` instead of `bearerTokenEnvVar`. Every secret named
+`SEED_MCP_<PROJECT>` then becomes its own server `seed_<project>` with that token and the entry's
+access; adding a project is `/secret set SEED_MCP_BANANA` in game, no restart.
+
 The token is best typed in game: `/secret set SEED_MCP_TOKEN` opens a masked field, and the
 Foreman keeps it in its vault (src/secrets.ts): encrypted for your account (Windows DPAPI, the macOS
 keychain, or the Linux Secret Service) in `<home>/secrets.json`, decrypted in memory only, never
