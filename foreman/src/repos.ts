@@ -1,7 +1,8 @@
 // RepoManager: registered local git repos, per-worker worktrees, structured diffs, guarded merges.
 //
 // Safety contract
-//  - never pushes (there is no code path that runs `git push`)
+//  - never pushes, except pushForReview(): a shared Foreman (config "mergeRequests") pushes an
+//    approved worker branch - never a base branch - and opens a merge request (mergerequests.ts)
 //  - worktrees live under <profile>/worktrees, on branches agentcraft/<agent>/<task-slug>
 //  - the user's checkout is only ever modified by merge(), which requires an answered `merge`
 //    decision whose option is "Merge" and refuses if the merge would conflict or if the checkout
@@ -24,6 +25,10 @@ import { ensureDir, isInsideOrEqual } from './util/fsx.js';
 import { agentGitIdentity, git, gitConfigGet, gitOut, identityEnv, listWorktrees } from './util/git.js';
 import { runShell } from './util/proc.js';
 import { slugify, tailLines } from './util/text.js';
+import { gitlabProject, openMergeRequest } from './mergerequests.js';
+
+/** The Foreman's own fetch/push (shared Foreman only): https and ssh; every other git call has no transport at all. */
+const remoteEnv = (): NodeJS.ProcessEnv => ({ GIT_ALLOW_PROTOCOL: process.env.AGENTCRAFT_GIT_PROTOCOLS?.trim() || 'https:ssh' });
 
 export class RepoError extends Error {
   constructor(
@@ -49,6 +54,8 @@ export interface MergeResult {
   base: string;
   branch: string;
   files: number;
+  /** pushForReview: the merge request opened in GitLab */
+  mergeRequest?: { iid: number; url: string; existed: boolean };
 }
 
 export interface TestResult {
@@ -129,6 +136,11 @@ export interface RepoOptions {
   mergeStyle?: 'merge' | 'squash';
   /** sign the approved merge commit if the repo's git config says commit.gpgsign=true */
   signMerges?: boolean;
+  /**
+   * a shared Foreman's checkouts are clones nobody works in: the base branch is brought up to
+   * date from this remote (fast-forward only) before each new worktree
+   */
+  syncRemote?: string;
 }
 
 /** the user's git identity as their own git sees it in that repo (falls back to AgentCraft). */
@@ -341,6 +353,7 @@ export class RepoManager {
    */
   private async doCreateWorktree(repoId: string, agentId: string, task: { id: string; title: string }, startPoint?: string): Promise<Worktree> {
     const r = this.require(repoId);
+    if (this.opts.syncRemote && !startPoint) await this.syncBase(r, this.opts.syncRemote);
     const id = `${agentId}-${task.id}`;
     const existing = r.worktrees.find((w) => w.id === id);
     if (existing && existing.status === 'active' && fs.existsSync(existing.path)) return existing;
@@ -629,6 +642,96 @@ export class RepoManager {
     await this.removeWorktreeDir(r, w);
     await this.refresh(r.id);
     return { sha: mergeSha.slice(0, 7), base: w.base, branch: w.branch, files };
+  }
+
+  /**
+   * Bring the base branch up to date from `remote` (fast-forward only; a checkout with local
+   * changes or a diverged branch is left as it is, with a warning). Never fails the caller.
+   */
+  async syncBase(r: Repo, remote: string): Promise<void> {
+    const b = r.branch;
+    if (!b || b === 'HEAD') return;
+    const f = await git(r.path, ['fetch', '--quiet', remote, `+refs/heads/${b}:refs/remotes/${remote}/${b}`], { allowFail: true, timeoutMs: 120_000, env: remoteEnv() });
+    if (f.code !== 0) {
+      this.ctx.log.warn(`${r.name}: could not fetch ${remote}/${b}: ${(f.stderr || f.stdout).trim().split('\n').slice(-1)[0]}`);
+      return;
+    }
+    const remoteRef = `refs/remotes/${remote}/${b}`;
+    const behind = await git(r.path, ['merge-base', '--is-ancestor', `refs/heads/${b}`, remoteRef], { allowFail: true });
+    if (behind.code !== 0) {
+      const same = (await gitOut(r.path, ['rev-parse', `refs/heads/${b}`])) === (await gitOut(r.path, ['rev-parse', remoteRef]));
+      if (!same) this.ctx.log.warn(`${r.name}: ${b} has commits that ${remote}/${b} has not: not updated`);
+      return;
+    }
+    const target = await this.checkoutOf(r, b);
+    if (target) {
+      if (await this.isDirty(target)) {
+        this.ctx.log.warn(`${r.name}: the checkout has uncommitted changes: ${b} not updated from ${remote}`);
+        return;
+      }
+      await git(target, ['merge', '--ff-only', '-q', remoteRef], { allowFail: true });
+    } else {
+      const old = await gitOut(r.path, ['rev-parse', `refs/heads/${b}`]);
+      await git(r.path, ['update-ref', `refs/heads/${b}`, await gitOut(r.path, ['rev-parse', remoteRef]), old], { allowFail: true });
+    }
+    await this.refresh(r.id).catch(() => undefined);
+  }
+
+  /**
+   * Shared Foreman: push an approved worker branch to `remote` and open a GitLab merge request
+   * into its base branch, instead of merging locally. Same approval checks as merge().
+   */
+  pushForReview(
+    decision: Decision,
+    o: { remote: string; token: string; title: string; description: string; commitMessage?: string; removeSourceBranch: boolean },
+    fetchFn: typeof fetch = fetch,
+  ): Promise<MergeResult> {
+    return this.serial(decision.repoId ?? '?', () => this.doPushForReview(decision, o, fetchFn));
+  }
+
+  private async doPushForReview(
+    decision: Decision,
+    o: { remote: string; token: string; title: string; description: string; commitMessage?: string; removeSourceBranch: boolean },
+    fetchFn: typeof fetch,
+  ): Promise<MergeResult> {
+    if (decision.kind !== 'merge') throw new RepoError('merge requires a merge decision', 'refused');
+    if (decision.status !== 'answered' || decision.answer?.option !== 'Merge') throw new RepoError(`decision ${decision.id} does not approve a merge`, 'refused');
+    if (!decision.repoId || !decision.worktree) throw new RepoError(`decision ${decision.id} names no repo/worktree`, 'refused');
+    const r = this.require(decision.repoId);
+    const w = this.requireWorktree(r.id, decision.worktree);
+    if (w.id !== decision.worktree) throw new RepoError(`decision ${decision.id} targets ${decision.worktree}, not ${w.id}`, 'refused');
+    if (w.status !== 'active') throw new RepoError(`worktree ${w.id} is ${w.status}`, 'refused');
+    if (!w.branch.startsWith(BRANCH_PREFIX)) throw new RepoError(`${w.branch} is not an AgentCraft branch: not pushed`, 'refused');
+
+    await this.commitAll(r.id, w.id, o.commitMessage ?? `agentcraft: ${w.taskId ?? w.id}`);
+    const ahead = Number(await gitOut(r.path, ['rev-list', '--count', `${w.base}..${w.branch}`]));
+    if (!ahead) throw new RepoError(`${w.branch} has no changes to merge`, 'empty');
+
+    const url = (await git(r.path, ['remote', 'get-url', o.remote], { allowFail: true })).stdout.trim();
+    const where = url ? gitlabProject(url) : undefined;
+    if (!where) throw new RepoError(`${r.name}: remote ${o.remote} (${url || 'none'}) is not a GitLab project URL`, 'failed');
+    // the branch is ours alone: a branch pushed again after requested changes replaces the old one
+    const push = await git(r.path, ['push', '--quiet', o.remote, `+refs/heads/${w.branch}:refs/heads/${w.branch}`], { allowFail: true, timeoutMs: 180_000, env: remoteEnv() });
+    if (push.code !== 0) throw new RepoError(`could not push ${w.branch} to ${o.remote}: ${(push.stderr || push.stdout).trim().split('\n').slice(-2).join(' ')}`, 'failed');
+    let mr;
+    try {
+      mr = await openMergeRequest({ ...where, token: o.token, branch: w.branch, target: w.base, title: o.title, description: o.description, removeSourceBranch: o.removeSourceBranch }, fetchFn);
+    } catch (e) {
+      throw new RepoError(`${w.branch} is pushed, but ${(e as Error).message}`, 'failed');
+    }
+
+    const branchSha = await gitOut(r.path, ['rev-parse', `refs/heads/${w.branch}`]);
+    const forkPoint = await gitOut(r.path, ['merge-base', `refs/heads/${w.base}`, branchSha]);
+    const files = (await gitOut(r.path, ['diff', '--name-only', forkPoint, branchSha])).split('\n').filter(Boolean).length;
+    this.ctx.store.data.worktreeMeta[`${r.id}/${w.id}`] = {
+      ...(this.ctx.store.data.worktreeMeta[`${r.id}/${w.id}`] ?? { createdAt: this.ctx.now() }),
+      mergedBaseSha: forkPoint,
+      mergedSha: branchSha,
+    };
+    w.status = 'merged';
+    await this.removeWorktreeDir(r, w);
+    await this.refresh(r.id);
+    return { sha: branchSha.slice(0, 7), base: w.base, branch: w.branch, files, mergeRequest: mr };
   }
 
   /**

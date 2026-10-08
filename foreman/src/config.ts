@@ -8,6 +8,7 @@ import { defaultUserName } from './user.js';
 import type { EffortLevel } from '@anthropic-ai/claude-agent-sdk';
 import { parseAuto, type AutoConfig } from './auto.js';
 import { parseMcp, type McpServerConfig } from './mcp.js';
+import { parseMergeRequests, type MergeRequestConfig } from './mergerequests.js';
 
 export const FOREMAN_VERSION = '0.1.0';
 
@@ -113,6 +114,8 @@ export interface Config {
   mergeStyle: 'merge' | 'squash';
   /** sign approved merge commits when the repo's own git config says commit.gpgsign=true */
   signMerges: boolean;
+  /** shared Foreman: approved branches are pushed and opened as GitLab merge requests (mergerequests.ts) */
+  mergeRequests?: MergeRequestConfig;
   /** team settings (workers, CI, review, lead read commands) and the Claude engine's options */
   claude: ClaudeConfig;
   codex: CodexConfig;
@@ -312,6 +315,7 @@ export function loadConfig(argv: string[], env: NodeJS.ProcessEnv = process.env)
     mergeStyle: mergeStyle(pick('merge-style', 'AGENTCRAFT_MERGE_STYLE')),
     // the sim answers merges unattended (screenshot QA, --auto-answer): never sign there
     signMerges: bool(pick('sign-merges', 'AGENTCRAFT_SIGN_MERGES'), backend !== 'sim'),
+    ...(file.mergeRequests ? { mergeRequests: parseMergeRequests(file.mergeRequests)! } : {}),
     claude: {
       leadModel: str(flags['lead-model']) ?? model ?? str(env.AGENTCRAFT_LEAD_MODEL) ?? str(fileClaude.leadModel) ?? 'opus',
       workerModel: str(flags['worker-model']) ?? model ?? str(env.AGENTCRAFT_WORKER_MODEL) ?? str(fileClaude.workerModel) ?? 'sonnet',

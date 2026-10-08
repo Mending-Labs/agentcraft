@@ -34,6 +34,7 @@ import { TaskError, TaskGraph } from './taskgraph.js';
 import { currentActor, ownerName, setUserName, userName } from './user.js';
 import { actorOf, UserStore, type Actor } from './users.js';
 import { ACCOUNT_SECRET_PREFIX, AccountError, Accounts, type TurnAccount } from './accounts.js';
+import { mergeRequestToken } from './mergerequests.js';
 import type { AutoConfig, AutoKind } from './auto.js';
 import { dirsInText, workspaceRefusal } from './workspace.js';
 import { McpCatalog } from './mcp.js';
@@ -121,7 +122,11 @@ export class Foreman {
     const attached = this.memory.backfillGoals(this.store.data.goals, this.store.data.feed);
     if (attached) this.log.info(`memory: attached ${attached} older notes to their goal`);
     this.decisions = new DecisionQueue(this.ctx);
-    this.repos = new RepoManager(this.ctx, path.join(opts.config.dataDir, 'worktrees'), { mergeStyle: opts.config.mergeStyle, signMerges: opts.config.signMerges });
+    this.repos = new RepoManager(this.ctx, path.join(opts.config.dataDir, 'worktrees'), {
+      mergeStyle: opts.config.mergeStyle,
+      signMerges: opts.config.signMerges,
+      ...(opts.config.mergeRequests ? { syncRemote: opts.config.mergeRequests.remote } : {}),
+    });
     this.notifier =
       opts.notifier ??
       new Notifier({ enabled: opts.config.notify, silent: opts.config.toastSilent, log: this.log, now });
@@ -614,10 +619,26 @@ export class Foreman {
         stashed = prep === 'stashed';
       }
       try {
-        const res = await this.repos.merge(d, task ? { commitMessage: `${task.id}: ${task.title}${task.summary ? `\n\n${task.summary}` : ''}` } : {});
+        const commitMessage = task ? `${task.id}: ${task.title}${task.summary ? `\n\n${task.summary}` : ''}` : undefined;
+        const mr = this.config.mergeRequests;
+        const res = mr
+          ? await this.repos.pushForReview(d, {
+              remote: mr.remote,
+              token: mergeRequestToken(mr, (n) => this.secrets.get(n)),
+              title: task ? `${task.id}: ${task.title}` : `AgentCraft: ${d.worktree ?? d.id}`,
+              description: [task?.summary, `Approved in AgentCraft by ${d.answer?.by ?? userName()} (decision ${d.id}${task ? `, task ${task.id}` : ''}).`].filter(Boolean).join('\n\n'),
+              ...(commitMessage ? { commitMessage } : {}),
+              removeSourceBranch: mr.removeSourceBranch,
+            })
+          : await this.repos.merge(d, commitMessage ? { commitMessage } : {});
         if (task) this.tasks.setStatus(task.id, 'done', { viaMerge: true, force: task.status !== 'review' });
-        this.bus.feed('merge', `Merged ${res.branch} into ${res.base} (${res.sha}, ${res.files} file${res.files === 1 ? '' : 's'})`, { agentId: d.agentId });
-        this.notify('info', `Merged ${res.branch} into ${res.base}`);
+        if (res.mergeRequest) {
+          this.bus.feed('merge', `Merge request !${res.mergeRequest.iid} ${res.mergeRequest.existed ? 'updated' : 'opened'}: ${res.branch} into ${res.base} (${res.files} file${res.files === 1 ? '' : 's'}) ${res.mergeRequest.url}`, { agentId: d.agentId });
+          this.notify('info', `Merge request !${res.mergeRequest.iid}: ${res.branch} into ${res.base}`);
+        } else {
+          this.bus.feed('merge', `Merged ${res.branch} into ${res.base} (${res.sha}, ${res.files} file${res.files === 1 ? '' : 's'})`, { agentId: d.agentId });
+          this.notify('info', `Merged ${res.branch} into ${res.base}`);
+        }
         // a duplicate merge request for the same task (asked again while this one ran) is now moot
         if (task) for (const other of this.decisions.open()) if (other.kind === 'merge' && other.taskId === task.id && other.id !== d.id) this.decisions.cancel(other.id, `${task.id} is already merged`);
         if (stashed) await this.restoreStash(d, label);
