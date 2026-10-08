@@ -510,6 +510,23 @@ export class Foreman {
     this.notify('warn', truncate(msg, 200), d.id);
   }
 
+  /** A merge decision whose work is already merged (its task is done, or its worktree merged). */
+  private mergeIsMoot(d: Decision): boolean {
+    if (d.kind !== 'merge') return false;
+    const task = d.taskId ? this.tasks.get(d.taskId) : undefined;
+    const wt = d.repoId && d.worktree ? this.repos.findWorktree(d.repoId, d.worktree) : undefined;
+    return wt?.status === 'merged' || (task?.status === 'done' && wt?.status !== 'active');
+  }
+
+  /** Merge decisions left open for work that was merged meanwhile (e.g. before a restart): closed. */
+  private closeMootMerges(): void {
+    for (const d of this.decisions.open()) {
+      if (!this.mergeIsMoot(d)) continue;
+      this.decisions.cancel(d.id, `${d.taskId ?? d.worktree ?? 'this branch'} is already merged`);
+      this.log.info(`closed ${d.id}: ${d.taskId ?? d.worktree} is already merged`);
+    }
+  }
+
   private async applyMergeAnswer(d: Decision): Promise<void> {
     const task = d.taskId ? this.tasks.get(d.taskId) : undefined;
     const option = d.answer?.option;
@@ -542,6 +559,14 @@ export class Foreman {
           this.tasks.setStatus(task.id, 'done', { force: true });
           this.bus.feed('merge', `Nothing to merge for ${task.id} (no file changes): closed as done`, { agentId: d.agentId });
           this.notify('info', `${task.id} had no changes: closed as done`);
+          return;
+        }
+        // a duplicate decision for work that is already merged: close it rather than reopen it forever
+        if (this.mergeIsMoot(d)) {
+          // (answered at this point: back to open so that cancel() takes it)
+          this.decisions.reopen(d.id);
+          this.decisions.cancel(d.id, `${task?.id ?? d.worktree ?? 'this branch'} is already merged`);
+          this.bus.feed('merge', `${task?.id ?? d.worktree} was already merged: duplicate merge request closed`, { agentId: d.agentId });
           return;
         }
         const reason = e instanceof RepoError ? e.message : `merge failed: ${(e as Error).message}`;
@@ -810,6 +835,7 @@ export class Foreman {
       await this.repos.refresh(r.id).catch((e) => this.log.warn(`refresh ${r.id}: ${(e as Error).message}`));
     }
     this.repos.startPolling(this.config.repoPollMs);
+    this.closeMootMerges();
     await backend.start();
   }
 

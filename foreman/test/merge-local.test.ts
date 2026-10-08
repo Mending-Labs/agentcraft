@@ -71,6 +71,17 @@ describe('merging into a checkout with the user\'s own changes', () => {
     expect(h.fm.decisions.get(dup.id)!.context).toMatch(/already merged/);
   });
 
+  it('Merge on a duplicate whose work is already merged closes it instead of reopening it', async () => {
+    const { t, d } = await setup();
+    await h.fm.answerDecision(d.id, MERGE_LOCAL_OPTIONS[0]);
+    await until(() => h.fm.tasks.get(t.id)!.status === 'done');
+    // a duplicate created after the merge (e.g. before this fix, or by hand)
+    const dup = h.fm.createDecision({ agentId: 'marlow', kind: 'merge', question: 'Merge again?', options: [...MERGE_OPTIONS], taskId: t.id, repoId: d.repoId!, worktree: d.worktree! });
+    await h.fm.answerDecision(dup.id, 'Merge');
+    expect(h.fm.decisions.get(dup.id)!.status).toBe('cancelled');
+    expect(h.fm.decisions.open()).toHaveLength(0);
+  });
+
   it('stash, merge, restore: the merge lands and the user\'s change is back, uncommitted', async () => {
     const { t, d } = await setup();
     await h.fm.answerDecision(d.id, MERGE_LOCAL_OPTIONS[1]);
