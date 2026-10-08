@@ -145,7 +145,37 @@ public final class ConsoleCommands {
 		if (repos.size() <= 1) {
 			return new Goal(text, repos.isEmpty() ? null : repos.get(0).id(), List.of());
 		}
+		if (namesWorkspace(text, s, repos)) {
+			// tidying a workspace folder: the lead has its workspace tools whatever the repo
+			return new Goal(text, defaultRepo(s), List.of());
+		}
 		return new Goal(text, defaultRepo(s), repos);
+	}
+
+	/** The goal names a workspace folder (its path or folder name) and no registered repo's path. */
+	static boolean namesWorkspace(String text, ForemanState s, List<Repo> repos) {
+		List<String> workspaces = s.status() == null ? List.of() : s.status().workspaces();
+		if (workspaces.isEmpty()) {
+			return false;
+		}
+		String t = normPath(text);
+		for (Repo r : repos) {
+			if (r.path() != null && t.contains(normPath(r.path()))) {
+				return false;
+			}
+		}
+		for (String w : workspaces) {
+			String p = normPath(w);
+			String name = p.substring(p.lastIndexOf('/') + 1);
+			if (t.contains(p) || (!name.isEmpty() && java.util.regex.Pattern.compile("(^|[^\\w-])" + java.util.regex.Pattern.quote(name) + "($|[^\\w-])").matcher(t).find())) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private static String normPath(String p) {
+		return p.replace('\\', '/').replaceAll("/+$", "").toLowerCase(Locale.ROOT);
 	}
 
 	/** The repo a new goal goes to by default: the current goal's repo, else the most recently added. */

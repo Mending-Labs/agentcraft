@@ -212,8 +212,9 @@ public final class Protocol {
 	}
 
 	public record ForemanStatus(String version, BackendName backend, AuthStatus auth, @Nullable String message, @Nullable String account,
-		@Nullable Double speed, @Nullable Boolean showcase, @Nullable Double costUsd, @Nullable String userName) {
+		@Nullable Double speed, @Nullable Boolean showcase, @Nullable Double costUsd, @Nullable String userName, List<String> workspaces) {
 		public ForemanStatus {
+			workspaces = workspaces == null ? List.of() : workspaces;
 			version = version == null ? "?" : version;
 			backend = backend == null ? BackendName.UNKNOWN : backend;
 			auth = auth == null ? AuthStatus.UNKNOWN : auth;

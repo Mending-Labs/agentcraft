@@ -187,6 +187,7 @@ Exact option labels: merge decisions use `Merge`, `Request changes`, `Reject`; p
 | `showcase` | boolean | no | sim: holding a static showcase state (`--showcase` or `--showcase late`) |
 | `costUsd` | number | no | claude: estimated spend of this profile (sum over all sessions, survives restarts) |
 | `userName` | string | no | the person the team works for, as the agents address them (UI: "<name> answered") |
+| `workspaces` | string[] | no | folders that are not repos the lead may reorganise (config `workspaces`); a goal that names one needs no repo choice |
 
 ### <a id="agentlogs"></a>AgentLogs
 

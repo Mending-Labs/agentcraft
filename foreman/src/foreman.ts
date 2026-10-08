@@ -104,6 +104,7 @@ export class Foreman {
     this.log.debug(`cast from ${source}`);
     setUserName(opts.config.userName);
     this.status = { version: FOREMAN_VERSION, backend: opts.config.backend, auth: opts.config.backend === 'sim' ? 'ok' : 'unknown', userName: userName() };
+    if (opts.config.workspaces?.length) this.status.workspaces = [...opts.config.workspaces];
     if (opts.config.backend === 'sim') this.status.message = 'Simulated team (sim backend)';
     this.initRoster();
     this.decisions.onCreated((d) => this.onDecisionCreated(d));

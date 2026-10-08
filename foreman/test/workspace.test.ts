@@ -159,7 +159,8 @@ describe('propose_workspace_changes (lead tool)', () => {
   const leadTool = () => agentTools(h.fm, 'marlow', 'lead', hooks).find((t) => t.name === 'propose_workspace_changes')!;
   const text = (r: { content: Array<{ text: string }> }) => r.content.map((c) => c.text).join('\n');
 
-  it('is a lead tool only, and only with workspaces', () => {
+  it('is a lead tool only, and only with workspaces (announced to the mod in foreman.status)', () => {
+    expect(h.fm.status.workspaces).toEqual([ws]);
     expect(leadTool()).toBeDefined();
     expect(agentTools(h.fm, 'kit', 'worker', hooks).some((t) => t.name === 'propose_workspace_changes')).toBe(false);
   });

@@ -221,6 +221,7 @@ export const ForemanStatus = z.object({
   showcase: z.boolean().optional().describe('sim: holding a static showcase state (`--showcase` or `--showcase late`)'),
   costUsd: z.number().optional().describe('claude: estimated spend of this profile (sum over all sessions, survives restarts)'),
   userName: z.string().optional().describe('the person the team works for, as the agents address them (UI: "<name> answered")'),
+  workspaces: z.array(z.string()).optional().describe('folders that are not repos the lead may reorganise (config `workspaces`); a goal that names one needs no repo choice'),
 });
 export type ForemanStatus = z.infer<typeof ForemanStatus>;
 
