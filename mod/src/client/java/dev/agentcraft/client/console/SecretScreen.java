@@ -23,13 +23,31 @@ import org.jspecify.annotations.Nullable;
 public final class SecretScreen extends Screen {
 	private static final int W = 300;
 	private final String name;
-	private final TextModel value = new TextModel(8192);
+	/** "claude" / "codex": links an AI subscription (/compte) instead of storing a vault secret */
+	private final @Nullable String engine;
+	private final TextModel value;
 	private boolean sending;
 	private @Nullable String error;
 
 	public SecretScreen(String name) {
-		super(Component.translatable("agentcraft.console.secret_title", name));
+		this(name, null);
+	}
+
+	private SecretScreen(String name, @Nullable String engine) {
+		super(engine != null ? Component.translatable("agentcraft.console.account_title", name) : Component.translatable("agentcraft.console.secret_title", name));
 		this.name = name;
+		this.engine = engine;
+		// a Codex auth.json is a few kB
+		this.value = new TextModel(engine != null ? 16384 : 8192);
+	}
+
+	/** The masked field for /compte claude|codex. */
+	public static SecretScreen account(String engine) {
+		return new SecretScreen(engine.equals("codex") ? "Codex" : "Claude", engine);
+	}
+
+	private String title() {
+		return engine != null ? Tr.t("console.account_title", name) : Tr.t("console.secret_title", name);
 	}
 
 	@Override
@@ -80,11 +98,11 @@ public final class SecretScreen extends Screen {
 			return;
 		}
 		sending = true;
-		Foreman.setSecret(name, v).whenComplete((ack, t) -> Minecraft.getInstance().execute(() -> {
+		(engine != null ? Foreman.setAccount(engine, v) : Foreman.setSecret(name, v)).whenComplete((ack, t) -> Minecraft.getInstance().execute(() -> {
 			sending = false;
 			if (t == null && ack != null && ack.ok()) {
 				value.clear();
-				ConsoleLog.add(Tone.OK, Tr.t("console.secret_stored", name));
+				ConsoleLog.add(Tone.OK, engine != null ? Tr.t("console.account_linked", name) : Tr.t("console.secret_stored", name));
 				onClose();
 			} else {
 				error = t != null ? t.getMessage() : ack != null && ack.error() != null ? ack.error() : Tr.t("console.secret_failed");
@@ -95,7 +113,7 @@ public final class SecretScreen extends Screen {
 	@Override
 	public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float a) {
 		int w = Math.min(W, width - 20);
-		int h = 104;
+		int h = engine != null ? 118 : 104;
 		int x = (width - w) / 2;
 		int y = (height - h) / 2;
 		Panels.panel(g, x, y, w, h);
@@ -103,10 +121,17 @@ public final class SecretScreen extends Screen {
 		int ix = x + p.left();
 		int iw = w - p.left() - p.right();
 		int cy = y + p.top();
-		Panels.header(g, font, Tr.t("console.secret_title", name), ix, cy, iw);
+		Panels.header(g, font, title(), ix, cy, iw);
 		cy += 20;
-		g.text(font, Tr.t("console.secret_explain"), ix, cy, UiBits.muted(), false);
-		cy += 14;
+		if (engine != null) {
+			g.text(font, Tr.t("console.account_explain_" + engine), ix, cy, UiBits.muted(), false);
+			cy += 12;
+			g.text(font, Tr.t("console.account_explain_server"), ix, cy, UiBits.muted(), false);
+			cy += 14;
+		} else {
+			g.text(font, Tr.t("console.secret_explain"), ix, cy, UiBits.muted(), false);
+			cy += 14;
+		}
 		Panels.sprite(g, Kit.TEXT_FIELD_FOCUSED, ix, cy, iw, 18);
 		String dots = "•".repeat(Math.min(value.length(), (iw - 16) / font.width("•")));
 		boolean caret = (System.currentTimeMillis() / 500) % 2 == 0 && !sending;

@@ -49,6 +49,8 @@ public final class ForemanLink {
 	private static final long PING_MS = 15_000;
 
 	private final URI uri;
+	/** a shared Foreman's member token, sent as {@code Authorization: Bearer}; null for a local Foreman */
+	private final @Nullable String token;
 	private final String modVersion;
 	private final ForemanState state;
 	private final Executor clientThread;
@@ -72,7 +74,12 @@ public final class ForemanLink {
 	private final Object sendLock = new Object();
 
 	public ForemanLink(URI uri, String modVersion, ForemanState state, Executor clientThread, boolean enabled) {
+		this(uri, null, modVersion, state, clientThread, enabled);
+	}
+
+	public ForemanLink(URI uri, @Nullable String token, String modVersion, ForemanState state, Executor clientThread, boolean enabled) {
 		this.uri = uri;
+		this.token = token;
 		this.modVersion = modVersion;
 		this.state = state;
 		this.clientThread = clientThread;
@@ -161,8 +168,11 @@ public final class ForemanLink {
 		attempt++;
 		publish(status.with(Phase.CONNECTING, status.lastError(), 0).attempt(attempt));
 		try {
-			http.newWebSocketBuilder()
-				.connectTimeout(Duration.ofSeconds(3))
+			WebSocket.Builder builder = http.newWebSocketBuilder().connectTimeout(Duration.ofSeconds(token != null ? 10 : 3));
+			if (token != null) {
+				builder.header("Authorization", "Bearer " + token);
+			}
+			builder
 				.buildAsync(uri, new Listener(gen))
 				.whenComplete((socket, err) -> {
 					if (err != null) {

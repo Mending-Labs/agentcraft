@@ -21,9 +21,14 @@ import net.minecraft.client.Minecraft;
  * ({@code dev.state.foreman}, {@code dev.foreman}).
  *
  * <pre>
- * AGENTCRAFT_PORT     Foreman port (default 7878), always 127.0.0.1
- * AGENTCRAFT_FOREMAN  0 disables the link (the HUD then says so)
+ * AGENTCRAFT_PORT          Foreman port (default 7878), on 127.0.0.1
+ * AGENTCRAFT_FOREMAN       0 disables the link (the HUD then says so)
+ * AGENTCRAFT_FOREMAN_URL   a shared Foreman instead (e.g. ws://10.10.10.71:7878)
+ * AGENTCRAFT_TOKEN         your member token for it
  * </pre>
+ *
+ * <p>Without those variables, {@code ~/.agentcraft/remote.json} ({@code {"url": "...", "token": "..."}})
+ * names the shared Foreman, so the same game connects to it from any computer it is set up on.
  */
 public final class ForemanFeature {
 	private ForemanFeature() {
@@ -32,13 +37,15 @@ public final class ForemanFeature {
 	public static void init() {
 		int port = ClientEnv.intValue("AGENTCRAFT_PORT", 7878);
 		boolean enabled = ClientEnv.flag("AGENTCRAFT_FOREMAN", true);
-		URI uri = URI.create("ws://127.0.0.1:" + port);
+		Remote remote = Remote.find();
+		URI uri = remote != null ? remote.uri() : URI.create("ws://127.0.0.1:" + port);
+		String token = remote != null ? remote.token() : null;
 		String modVersion = FabricLoader.getInstance().getModContainer(AgentCraft.MOD_ID)
 			.map(c -> c.getMetadata().getVersion().getFriendlyString()).orElse("0");
 		ForemanState state = new ForemanState(new LinkStatus(enabled ? LinkStatus.Phase.WAITING_RETRY : LinkStatus.Phase.DISABLED,
 			uri.toString(), 0, null, System.currentTimeMillis(), System.currentTimeMillis(), false));
 		// Executor: the client thread. Minecraft.getInstance() is resolved lazily (it does not exist yet during init).
-		ForemanLink link = new ForemanLink(uri, modVersion, state, r -> Minecraft.getInstance().execute(r), enabled);
+		ForemanLink link = new ForemanLink(uri, token, modVersion, state, r -> Minecraft.getInstance().execute(r), enabled);
 		Foreman.install(state, link);
 		ClientLifecycleEvents.CLIENT_STARTED.register(mc -> link.start());
 		ClientLifecycleEvents.CLIENT_STOPPING.register(mc -> link.stop());

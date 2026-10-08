@@ -4,6 +4,7 @@ import dev.agentcraft.client.console.ConsoleCommands.AgentAction;
 import dev.agentcraft.client.console.ConsoleCommands.Auto;
 import dev.agentcraft.client.console.ConsoleCommands.Theme;
 import dev.agentcraft.client.console.ConsoleCommands.SecretCmd;
+import dev.agentcraft.client.console.ConsoleCommands.AccountCmd;
 import dev.agentcraft.client.console.ConsoleCommands.FollowUp;
 import dev.agentcraft.client.console.ConsoleCommands.WorkspaceCmd;
 import dev.agentcraft.client.console.ConsoleCommands.Answer;
@@ -160,6 +161,28 @@ public final class ConsoleActions {
 				ConsoleLog.remember(raw);
 				clearFeedback();
 				net.minecraft.client.Minecraft.getInstance().gui.setScreen(new SecretScreen(sc.name()));
+				return After.CLEAR;
+			}
+			case AccountCmd ac when ac.action().equals("set") -> {
+				ConsoleLog.remember(raw);
+				clearFeedback();
+				net.minecraft.client.Minecraft.getInstance().gui.setScreen(SecretScreen.account(ac.engine()));
+				return After.CLEAR;
+			}
+			case AccountCmd ac when ac.action().equals("delete") -> track(Foreman.deleteAccount(ac.engine()), raw, restore,
+				ack -> Tr.t("console.account_unlinked", ac.engine()) + " " + UiBits.CHECK, Tr.t("console.secret_deleting") + "…");
+			case AccountCmd ac -> {
+				ConsoleLog.remember(raw);
+				List<dev.agentcraft.client.foreman.Protocol.Member> members = s.status() == null ? List.of() : s.status().members();
+				if (members.isEmpty()) {
+					ConsoleLog.add(Tone.INFO, Tr.t("console.accounts_local"));
+				} else {
+					for (var m : members) {
+						String linked = m.accounts().isEmpty() ? Tr.t("console.accounts_none") : String.join(", ", m.accounts());
+						ConsoleLog.add(Tone.INFO, Tr.t("console.accounts_line", m.name(), m.role(), Tr.t(m.online() ? "console.accounts_online" : "console.accounts_offline"), linked));
+					}
+				}
+				clearFeedback();
 				return After.CLEAR;
 			}
 			case SecretCmd sc when sc.action().equals("delete") -> track(Foreman.deleteSecret(sc.name()), raw, restore,

@@ -94,6 +94,15 @@ public final class Foreman {
 		return link.send(ForemanJson.msg("secret.set").put("name", name).put("value", value).json());
 	}
 
+	/** Link this member's own AI subscription (engine "claude" or "codex") on the shared Foreman. */
+	public static CompletableFuture<Ack> setAccount(String engine, String value) {
+		return link.send(ForemanJson.msg("account.set").put("engine", engine).put("value", value).json());
+	}
+
+	public static CompletableFuture<Ack> deleteAccount(String engine) {
+		return link.send(ForemanJson.msg("account.delete").put("engine", engine).json());
+	}
+
 	public static CompletableFuture<Ack> deleteSecret(String name) {
 		return link.send(ForemanJson.msg("secret.delete").put("name", name).json());
 	}

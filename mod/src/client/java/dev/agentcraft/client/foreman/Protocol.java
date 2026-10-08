@@ -231,13 +231,21 @@ public final class Protocol {
 
 	public record ForemanStatus(String version, BackendName backend, AuthStatus auth, @Nullable String message, @Nullable String account,
 		@Nullable Double speed, @Nullable Boolean showcase, @Nullable Double costUsd, @Nullable String userName, List<String> workspaces,
-		@Nullable Boolean auto, List<String> secrets) {
+		@Nullable Boolean auto, List<String> secrets, List<Member> members) {
 		public ForemanStatus {
 			secrets = secrets == null ? List.of() : secrets;
+			members = members == null ? List.of() : members;
 			workspaces = workspaces == null ? List.of() : workspaces;
 			version = version == null ? "?" : version;
 			backend = backend == null ? BackendName.UNKNOWN : backend;
 			auth = auth == null ? AuthStatus.UNKNOWN : auth;
+		}
+	}
+
+	/** A shared Foreman's member: who is connected, which AI subscriptions they linked (/compte). */
+	public record Member(String name, String role, boolean online, List<String> accounts) {
+		public Member {
+			accounts = accounts == null ? List.of() : accounts;
 		}
 	}
 

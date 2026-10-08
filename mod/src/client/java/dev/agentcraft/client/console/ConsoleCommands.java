@@ -42,7 +42,7 @@ public final class ConsoleCommands {
 	// ------------------------------------------------------------------ intents
 
 	public sealed interface Intent permits Goal, Message, Answer, RepoAdd, Repos, AgentAction, TaskAction, ShowDiff, Status, Help, Decide, Clear,
-		Sound, Auto, WorkspaceCmd, FollowUp, Theme, SecretCmd, Invalid, Empty {
+		Sound, Auto, WorkspaceCmd, FollowUp, Theme, SecretCmd, AccountCmd, Invalid, Empty {
 	}
 
 	/** {@code repoId} null = the Foreman's default; {@code choices} non-empty = ask which repo first. */
@@ -102,6 +102,10 @@ public final class ConsoleCommands {
 	public record SecretCmd(String action, @Nullable String name) implements Intent {
 	}
 
+	/** /compte: action set | delete | list; engine "claude" / "codex" (null for list). The value goes in a masked field. */
+	public record AccountCmd(String action, @Nullable String engine) implements Intent {
+	}
+
 	/** {@code addPath} null: list the workspaces. */
 	public record WorkspaceCmd(@Nullable String addPath) implements Intent {
 	}
@@ -139,6 +143,7 @@ public final class ConsoleCommands {
 			new Command("workspace", "/workspace add <" + Tr.t("console.usage_path") + ">", Tr.t("console.cmd_workspace_help")),
 			new Command("auto", "/auto on|off", Tr.t("console.cmd_auto_help")),
 			new Command("secret", "/secret set|delete NAME", Tr.t("console.cmd_secret_help")),
+			new Command("compte", "/compte claude|codex", Tr.t("console.cmd_account_help")),
 			new Command("theme", "/theme dark|light", Tr.t("console.cmd_theme_help")),
 			new Command("sound", "/sound on|off", Tr.t("console.cmd_sound_help")),
 			new Command("clear", "/clear", Tr.t("console.cmd_clear_help")),
@@ -361,6 +366,7 @@ public final class ConsoleCommands {
 				: args.size() == 2 && (args.get(0).equalsIgnoreCase("set") || args.get(0).equalsIgnoreCase("delete")) && args.get(1).matches("[A-Za-z_][A-Za-z0-9_]{0,63}")
 					? new SecretCmd(args.get(0).toLowerCase(Locale.ROOT), args.get(1))
 					: new Invalid(Tr.t("console.err_secret_usage"));
+			case "compte", "account", "comptes", "accounts" -> parseAccount(args);
 			case "theme" -> args.isEmpty() ? new Theme(null) : switch (args.get(0).toLowerCase(Locale.ROOT)) {
 				case "dark", "sombre", "on" -> new Theme(true);
 				case "light", "clair", "off" -> new Theme(false);
@@ -696,6 +702,20 @@ public final class ConsoleCommands {
 
 	// ------------------------------------------------------------------ describe (live intent preview)
 
+	private static Intent parseAccount(List<String> args) {
+		if (args.isEmpty() || args.get(0).equalsIgnoreCase("list") || args.get(0).equalsIgnoreCase("liste")) {
+			return new AccountCmd("list", null);
+		}
+		String first = args.get(0).toLowerCase(Locale.ROOT);
+		boolean delete = first.equals("delete") || first.equals("supprimer") || first.equals("remove");
+		String engine = (delete ? (args.size() > 1 ? args.get(1) : "") : first).toLowerCase(Locale.ROOT);
+		if ((!engine.equals("claude") && !engine.equals("codex")) || args.size() > (delete ? 2 : 1)) {
+			// a token typed on the line would stay in its draft and history: refuse it, never send it
+			return new Invalid(Tr.t(args.size() > (delete ? 2 : 1) ? "console.err_secret_inline" : "console.err_account_usage"));
+		}
+		return new AccountCmd(delete ? "delete" : "set", engine);
+	}
+
 	/** One short line for the right side of the input: what Enter will do. Null = nothing to say. */
 	public static @Nullable String describe(Intent in, ForemanState s) {
 		return switch (in) {
@@ -704,6 +724,11 @@ public final class ConsoleCommands {
 				case "set" -> Tr.t("console.desc_secret_set", sc.name());
 				case "delete" -> Tr.t("console.desc_secret_delete", sc.name());
 				default -> Tr.t("console.desc_secret_list");
+			};
+			case AccountCmd ac -> switch (ac.action()) {
+				case "set" -> Tr.t("console.desc_account_set", ac.engine());
+				case "delete" -> Tr.t("console.desc_account_delete", ac.engine());
+				default -> Tr.t("console.desc_account_list");
 			};
 			case Theme th -> th.dark() == null ? Tr.t("console.desc_theme_status") : th.dark() ? Tr.t("console.desc_theme_dark") : Tr.t("console.desc_theme_light");
 			case FollowUp f -> Tr.t("console.desc_followup", (f.goalText().length() > 36 ? f.goalText().substring(0, 35) + "…" : f.goalText()));
