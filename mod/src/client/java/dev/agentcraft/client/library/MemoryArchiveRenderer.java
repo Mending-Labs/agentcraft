@@ -31,7 +31,8 @@ import org.jspecify.annotations.Nullable;
  * Memory archive BER: shelf labels on the board between the two shelves. A row of archives (same
  * facing, same binding = scope, side by side) is one shelf section: its first block (viewer's left)
  * carries a brass-rimmed plate with the scope and the number of notes; each further block labels
- * one note (the plan first, then the order they were written) with an author-coloured tab. A quill
+ * one note (live notes before archived ones; the plan first, then the order they were written) with
+ * an author-coloured tab. A quill
  * marks notes you have not read yet in the library. Right-click opens the library at that scope / note.
  */
 public class MemoryArchiveRenderer extends StationRenderer<MemoryArchiveBlockEntity, MemoryArchiveRenderer.State> {

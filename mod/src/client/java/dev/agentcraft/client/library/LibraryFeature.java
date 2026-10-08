@@ -17,13 +17,14 @@ import org.jspecify.annotations.Nullable;
  * Memory library (Phase 3, library specialist).
  *
  * <ul>
- *   <li>{@link LibraryScreen}: two-pane reader of {@code Foreman.state().memory()} (scope tabs, the
- *       lead's plan pinned, markdown bodies, live task dots in the plan).</li>
+ *   <li>{@link LibraryScreen}: two-pane reader of {@code Foreman.state().memory()} (tabs by kind of
+ *       note + archives, notes grouped by goal with the plan and summary pinned, a search field,
+ *       markdown bodies, live task dots in the plan).</li>
  *   <li>{@link MemoryArchiveRenderer}: shelf labels (scope plate with the note count, one note
  *       title per further block of a row).</li>
- *   <li>Right-click: memory archive opens its scope (binding; empty = all) at the note its label
- *       shows; memory catalog and lecterns open the library at the plan.</li>
- *   <li>QA: {@code dev.screen {open:"library"}}, {@code dev.library {scope?, memoryId?, scroll?}}
+ *   <li>Right-click: memory archive opens the library at the note its label shows; memory catalog
+ *       and lecterns open the library at the current plan.</li>
+ *   <li>QA: {@code dev.screen {open:"library"}}, {@code dev.library {tab?, query?, memoryId?, scroll?}}
  *       (opens / drives it, returns its state), {@code dev.library.state}.</li>
  * </ul>
  */
@@ -49,17 +50,21 @@ public final class LibraryFeature {
 		registerDev();
 	}
 
-	/** Open the library; {@code scope} null/empty = all notes, {@code memoryId} null = the plan / newest. */
-	public static void open(@Nullable String scope, @Nullable String memoryId) {
-		Minecraft.getInstance().gui.setScreen(new LibraryScreen(scope, memoryId));
+	/**
+	 * Open the library. {@code tab}: a tab name ("plans", "archives"...), anything else (null, an
+	 * archive shelf's scope) = all live notes; {@code memoryId} null = the first note of the list.
+	 */
+	public static void open(@Nullable String tab, @Nullable String memoryId) {
+		Minecraft.getInstance().gui.setScreen(new LibraryScreen(tab, memoryId));
 	}
 
 	private static void registerDev() {
 		DevBridge.register("dev.library", 10_000,
-			"{scope?: all|shared|<agentId>, memoryId?, scroll?, open?} -> opens (or drives the open) memory library and returns its state",
+			"{tab?: all|plans|reports|reviews|summaries|decisions|archives, query?, memoryId?, scroll?, open?} -> opens (or drives the open) memory library and returns its state",
 			(req, mc) -> {
 				Fields f = Fields.of(req);
-				String scope = f.has("scope") ? f.str("scope") : null;
+				String tab = f.has("tab") ? f.str("tab") : f.has("scope") ? f.str("scope") : null;
+				String query = f.has("query") ? f.optStr("query", "") : null;
 				String memoryId = f.has("memoryId") ? f.str("memoryId") : null;
 				Double scroll = f.has("scroll") ? f.optNum("scroll", 0, 0, 10_000_000) : null;
 				boolean forceOpen = f.optBool("open", false);
@@ -67,12 +72,12 @@ public final class LibraryFeature {
 					Screen cur = mc.gui.screen();
 					LibraryScreen screen;
 					if (forceOpen || !(cur instanceof LibraryScreen)) {
-						screen = new LibraryScreen(scope == null || scope.equals("all") ? null : scope, memoryId);
+						screen = new LibraryScreen(tab, memoryId);
 						mc.gui.setScreen(screen);
 					} else {
 						screen = (LibraryScreen) cur;
 					}
-					screen.applyDev(scope, memoryId, scroll == null ? null : scroll.floatValue());
+					screen.applyDev(tab, memoryId, scroll == null ? null : scroll.floatValue(), query);
 					return screen.stateJson();
 				});
 			});

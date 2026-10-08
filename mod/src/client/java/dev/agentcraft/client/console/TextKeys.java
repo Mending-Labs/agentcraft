@@ -14,7 +14,7 @@ public final class TextKeys {
 	}
 
 	/** Ctrl+letter by keycode (layout-aware), or by scancode when the keycode is missing (DevBridge key events). */
-	static boolean ctrl(KeyEvent e, int keycodeChar, int scancode) {
+	public static boolean ctrl(KeyEvent e, int keycodeChar, int scancode) {
 		if (!e.hasControlDown() || e.hasAltDown()) {
 			return false;
 		}

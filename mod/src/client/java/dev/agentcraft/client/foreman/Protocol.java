@@ -192,11 +192,23 @@ public final class Protocol {
 		}
 	}
 
-	public record MemoryEntry(String id, String scope, String title, String body, long updated, @Nullable String author) {
+	/**
+	 * A memory note. {@code goalId}: the goal it belongs to (null = general); {@code kind}: plan,
+	 * report, review, summary, decision or note (null = unknown, older Foreman); {@code archived}:
+	 * folded into its goal's summary (shown under the library's Archives tab only).
+	 */
+	public record MemoryEntry(String id, String scope, String title, String body, long updated, @Nullable String author, @Nullable String goalId,
+		@Nullable String kind, @Nullable Boolean archived) {
 		public MemoryEntry {
 			scope = scope == null ? "shared" : scope;
 			title = title == null ? id : title;
 			body = body == null ? "" : body;
+			goalId = goalId == null || goalId.isBlank() ? null : goalId;
+			kind = kind == null || kind.isBlank() ? null : kind.toLowerCase(Locale.ROOT);
+		}
+
+		public boolean isArchived() {
+			return Boolean.TRUE.equals(archived);
 		}
 	}
 
