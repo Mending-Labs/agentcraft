@@ -10,7 +10,7 @@
 [![Minecraft 26.3](https://img.shields.io/badge/Minecraft-26.3-8fa98b)](https://www.minecraft.net)
 [![Fabric](https://img.shields.io/badge/mod%20loader-Fabric-d97757)](https://fabricmc.net)
 [![Claude Agent SDK](https://img.shields.io/badge/agents-Claude%20Agent%20SDK-2fa3a0)](https://code.claude.com/docs/en/agent-sdk/overview)
-[![Tests](https://img.shields.io/badge/tests-487%20passing-3b2a20)](foreman/test)
+[![Tests](https://img.shields.io/badge/tests-533%20passing-3b2a20)](foreman/test)
 
 <img src="docs/img/readme/hero.jpg" alt="The AgentCraft HQ at golden hour" width="100%">
 
@@ -214,6 +214,19 @@ the first time; in an older world, rebuild it with `/agentcraft hq`.
 > running AgentCraft yourself. To make it permanent for yourself, put
 > `{"claude": {"useClaudeLogin": true}}` in `~/.agentcraft/config.json`.
 
+**Codex.** AgentCraft also runs Codex agents. With the Codex CLI or the Codex desktop app installed
+and logged in (`codex login`, with ChatGPT or an OpenAI API key):
+
+```powershell
+tools\launch.ps1 -Backend codex -Repo C:\path\to\your\repo                       # an all-Codex team
+tools\launch.ps1 -Repo C:\path\to\your\repo -ForemanArgs '--worker-engine','codex'   # Claude lead, Codex workers
+```
+
+Codex agents live in the same studio and follow the same rules: their own git worktrees, every command
+checked by AgentCraft's policy (and asked in game when it needs you), the lead's review, and your
+**Merge**. They never get your own Codex MCP servers, plugins, apps or web search. Pick models with
+`--codex-model`, and mix engines per agent with `--engines kit=codex,wren=claude`.
+
 **Your name.** The agents call you by your OS user name. Change it with
 `-ForemanArgs '--user-name','Sam'`, `AGENTCRAFT_USER_NAME`, or `{"userName": "Sam"}` in
 `~/.agentcraft/config.json`.
@@ -305,6 +318,9 @@ tools\launch.ps1 -Repo C:\path\to\repo -ForemanArgs '--model','sonnet','--effort
 
 Measured with those settings on the sample repo: three two task goals, including two merge conflicts
 the workers resolved, took 2 to 10 minutes each and about $6 in total. The sim backend is free.
+
+Codex agents run on your Codex plan's usage (ChatGPT) or your OpenAI API key, whichever `codex login`
+uses. Their monitors show tokens per turn instead of dollars.
 
 <br>
 

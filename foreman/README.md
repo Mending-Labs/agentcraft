@@ -33,6 +33,9 @@ npm install
 npm run start -- --backend claude --repo C:\path\to\your\repo
 # personal use only: your local `claude` CLI login instead of an API key
 npm run start -- --backend claude --repo C:\path\to\your\repo --use-claude-login
+# Codex agents on your Codex login (`codex login`), or a mixed team
+npm run start -- --backend codex --repo C:\path\to\your\repo
+npm run start -- --backend claude --worker-engine codex --repo C:\path\to\your\repo
 
 # simulated team on a fresh sandbox repo (no API calls) - for demos and screenshot QA
 npm run start -- --backend sim --reset --speed 2
@@ -71,7 +74,11 @@ most ~100 ms of state, and interrupted agent turns resume on the next start.
 
 | flag / env | default | |
 | --- | --- | --- |
-| `--backend sim\|claude` / `AGENTCRAFT_BACKEND` | `claude` | |
+| `--backend sim\|claude\|codex` / `AGENTCRAFT_BACKEND` | `claude` | codex: an all-Codex team |
+| `--lead-engine` / `--worker-engine` `claude\|codex` | the backend's | mixed teams, e.g. a Claude lead with Codex workers |
+| `--engines kit=codex,...` / `AGENTCRAFT_ENGINES` | | engine per agent |
+| `--codex-model`, `--codex-lead-model`, `--codex-worker-model`, `--codex-effort` | your Codex config | Codex models and reasoning effort |
+| `--codex-path` / `AGENTCRAFT_CODEX_PATH` | `codex` on PATH, else the Codex app's | the Codex CLI |
 | `--port` / `AGENTCRAFT_PORT` | `7878` | WebSocket port (127.0.0.1 only) |
 | `--home` / `AGENTCRAFT_HOME` | `~/.agentcraft` | state root |
 | `--user-name` / `AGENTCRAFT_USER_NAME` / config `userName` | OS user name | how the agents address you; sent to the mod in `foreman.status` |
@@ -99,6 +106,28 @@ While running, `<home>/<profile>/foreman.json` records `{pid, port, host, backen
 so launch scripts can find it; `<home>/foreman.json` holds the same for the first live Foreman (when
 it exits, another live profile takes its place). A second Foreman on a profile that is already
 running is refused (two would both write its `state.json`).
+
+## Engines: Claude and Codex
+
+The team (`src/agents/team.ts`: task graph, worktrees, scheduling, CI, reviews, merges, steering,
+restarts) runs each agent turn through an engine, chosen per agent:
+
+- **Claude** (`src/agents/claude/engine.ts`): one Claude Agent SDK `query()` per turn; the team tools
+  are an in-process MCP server; every tool call goes through `canUseTool` and the policy.
+- **Codex** (`src/agents/codex/`): one `codex app-server` process per turn, JSON-RPC over stdio. The
+  agent's thread is durable, so its next turn resumes it. Commands run with `approvalPolicy:
+  "untrusted"`, so Codex asks before each one, and the ask goes through the same policy and in-game
+  permission prompts (commands are unwrapped from Codex's `powershell -Command` / `bash -lc` wrapper
+  first). Workers are sandboxed to their worktree, its git dir and the temp dir; the lead is
+  read-only. The team tools are app-server dynamic tools. None of your own Codex setup reaches an
+  agent thread: your MCP servers, plugins, apps, web search, image generation and notify hooks are
+  switched off for it (your Codex app is untouched). Codex's own sub-agent tools cannot be switched
+  off; agents are told not to use them, and every approval from a thread AgentCraft did not start is
+  declined. The git safety environment is passed explicitly (`shell_environment_policy.set`), since
+  Codex drops variables named like secrets (`GIT_CONFIG_KEY_0`).
+
+The rest of this section describes the team with either engine ("Read/Grep/Glob" is how a Codex
+agent reads with its shell).
 
 ## How the claude backend works
 
