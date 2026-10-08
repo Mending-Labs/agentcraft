@@ -122,6 +122,10 @@ public final class DecisionQueue {
 					return Tr.t("decisions.option_apply");
 				case Protocol.REJECT:
 					return Tr.t("decisions.option_reject");
+				case Protocol.YES:
+					return Tr.t("decisions.option_yes");
+				case Protocol.NO:
+					return Tr.t("decisions.option_no");
 				default:
 					return option;
 			}

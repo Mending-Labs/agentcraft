@@ -1,7 +1,7 @@
 // The AgentCraft team tools, shared by every engine (Claude: an in-process MCP server named
 // "agentcraft", see claude/tools.ts; Codex: app-server dynamic tools, see codex/engine.ts):
 //   send_message, ask_user, write_memory, read_memory, update_task, report_status, list_tasks
-//   lead only: create_task, request_merge
+//   lead only: create_task, request_merge, request_worker, release_worker
 //   lead only, with workspaces configured: propose_workspace_changes (see ../workspace.ts)
 // Every tool result carries any unread messages for the agent (so mid-turn messages arrive).
 import { z } from 'zod';
@@ -50,7 +50,7 @@ export interface AgentTool {
 /** Names of the team tools for a role (unprefixed). */
 export const TOOL_NAMES = {
   common: ['send_message', 'ask_user', 'write_memory', 'read_memory', 'update_task', 'report_status', 'list_tasks'],
-  lead: ['create_task', 'request_merge'],
+  lead: ['create_task', 'request_merge', 'request_worker', 'release_worker'],
   /** lead only, when workspaces are configured */
   workspace: ['propose_workspace_changes'],
 } as const;
@@ -336,6 +336,51 @@ export function agentTools(fm: Foreman, agentId: string, role: 'lead' | 'worker'
             return withInbox(`Auto mode is merging ${t.id} (tests pass, your review approved it); the result shows in the feed.`);
           }
           return withInbox(`Merge decision ${d.id} sent to ${userName()}.`);
+        },
+      ),
+    );
+  }
+
+  // the lead sizes the team: it calls off-shift workers in (the user agrees, or auto mode does)
+  // and sends them back off shift when their work is done
+  if (role === 'lead') {
+    const worker = (name: string) => {
+      const id = fm.resolveAgentId(name);
+      const a = id ? fm.agent(id) : undefined;
+      return a && a.role === 'worker' ? a : undefined;
+    };
+    tools.push(
+      tool(
+        'request_worker',
+        `Bring an off-shift worker on shift when parallel work would otherwise wait. ${userName()} approves (auto mode approves by itself). Keep the team as small as the work needs.`,
+        { worker: z.string().describe('worker id or name'), reason: z.string().describe('one line: the task(s) it will take') },
+        async ({ worker: name, reason }) => {
+          const a = worker(name);
+          if (!a) return fail(`no worker ${name}. Workers: ${fm.agents().filter((x) => x.role === 'worker').map((x) => x.id).join(', ')}`);
+          if (a.active) return withInbox(`${fm.nameOf(a.id)} is already on shift: give them a task with create_task.`);
+          const done = await askUser(
+            { kind: 'question', question: `Bring ${fm.nameOf(a.id)} on shift? ${reason}`, options: ['Yes', 'No'] },
+            fm.autoFor('questions') ? { option: 'Yes' } : undefined,
+          );
+          if (done === 'stopped') return withInbox(`Your turn was stopped before ${userName()} answered.`, true);
+          if (done.answer?.option !== 'Yes') return withInbox(`${userName()} keeps ${fm.nameOf(a.id)} off shift${done.answer?.text ? `: ${done.answer.text}` : ''}. Plan with the team you have.`);
+          await fm.backend?.onAgentAction(a.id, 'spawn');
+          fm.bus.feed('system', `${fm.nameOf(a.id)} joins the team (${reason})`, { agentId });
+          return withInbox(`${fm.nameOf(a.id)} is on shift: assign them a task with create_task (assignee "${a.id}").`);
+        },
+      ),
+      tool(
+        'release_worker',
+        'Send a worker off shift once they have no task left (they come back with request_worker).',
+        { worker: z.string().describe('worker id or name') },
+        async ({ worker: name }) => {
+          const a = worker(name);
+          if (!a) return fail(`no worker ${name}`);
+          if (!a.active) return withInbox(`${fm.nameOf(a.id)} is already off shift.`);
+          const busy = fm.tasks.list().filter((t) => t.assignee === a.id && ['todo', 'doing', 'review', 'blocked'].includes(t.status));
+          if (busy.length) return fail(`${fm.nameOf(a.id)} still has ${busy.map((t) => `${t.id} (${t.status})`).join(', ')}: reassign or finish those first`);
+          await fm.backend?.onAgentAction(a.id, 'stop');
+          return withInbox(`${fm.nameOf(a.id)} is off shift.`);
         },
       ),
     );

@@ -1232,7 +1232,13 @@ function classifyGit(args: string[], sc: SegCtx): J {
 
   const firstArg = (rest.find((a) => !a.startsWith('-')) ?? '').toLowerCase();
   // listings that change nothing (handled as read-only further down as well)
-  const listing = (sub === 'worktree' && firstArg === 'list') || (sub === 'remote' && (!firstArg || firstArg === 'get-url'));
+  const listing =
+    (sub === 'worktree' && firstArg === 'list') ||
+    (sub === 'remote' && (!firstArg || firstArg === 'get-url')) ||
+    (sub === 'branch' && listOnly(rest, BRANCH_LIST_FLAG)) ||
+    (sub === 'tag' && listOnly(rest, TAG_LIST_FLAG)) ||
+    (sub === 'config' && configReadOnly(rest)) ||
+    (sub === 'stash' && (firstArg === 'list' || firstArg === 'show'));
   const read = GIT_READ.has(sub) || sub === '' || listing;
   const gsc: SegCtx = { ...sc, vcwd: gitCwd, cmd: 'git' };
   // reading a repository inside a folder the agent may read (the lead's workspaces) needs no prompt

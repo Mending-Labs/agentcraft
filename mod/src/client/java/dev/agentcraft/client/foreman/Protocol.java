@@ -111,6 +111,9 @@ public final class Protocol {
 	public static final String DENY = "Deny";
 	/** workspace plan approval (a question; Reject is shared with merges) */
 	public static final String APPLY = "Apply";
+	/** the lead asking to bring a worker on shift (a question) */
+	public static final String YES = "Yes";
+	public static final String NO = "No";
 
 	// ------------------------------------------------------------------ entities
 

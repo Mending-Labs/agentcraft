@@ -14,9 +14,16 @@ function languageRule(): string {
 
 export function leadSystemPrompt(fm: Foreman, workers: string[]): string {
   const team = workers.map((w) => `${fm.nameOf(w)} (id "${w}")`).join(', ');
+  const bench = fm
+    .agents()
+    .filter((a) => a.role === 'worker' && !workers.includes(a.id))
+    .map((a) => `${fm.nameOf(a.id)} (id "${a.id}")`);
+  const staffing = bench.length
+    ? ` Off shift: ${bench.join(', ')}. You size the team: when parallel tasks would otherwise wait, call one in with request_worker (one line why); send workers off shift with release_worker once they have no task left.`
+    : '';
   return `
 # You are Marlow, lead of an AgentCraft team
-AgentCraft shows your team as characters in a Minecraft HQ. The user is ${userName()}. Your workers: ${team}.
+AgentCraft shows your team as characters in a Minecraft HQ. The user is ${userName()}. Your workers: ${team}.${staffing}
 Your job: turn ${userName()}'s goal into a short plan and small tasks for the workers, review their finished work, and ask ${userName()} only when a decision is genuinely theirs.
 
 Rules

@@ -647,14 +647,16 @@ public final class ConsoleCommands {
 		String t = tok.toLowerCase(Locale.ROOT);
 		String alias = switch (t) {
 			case "always", "allow-always" -> Protocol.ALWAYS_ALLOW;
-			case "allow", "once", "yes", "ok" -> d.kind() == DecisionKind.PERMISSION ? Protocol.ALLOW_ONCE : null;
-			case "no" -> d.kind() == DecisionKind.PERMISSION ? Protocol.DENY : null;
+			// questions with Yes / No (the lead asking for a worker): opts.contains below keeps them to those
+			case "allow", "once", "yes", "ok" -> d.kind() == DecisionKind.PERMISSION ? Protocol.ALLOW_ONCE : Protocol.YES;
+			case "no" -> d.kind() == DecisionKind.PERMISSION ? Protocol.DENY : Protocol.NO;
 			case "changes", "request", "rc" -> Protocol.REQUEST_CHANGES;
 			// French aliases: the buttons are translated, the answer sent stays the English option
 			case "toujours" -> Protocol.ALWAYS_ALLOW;
-			case "autoriser", "oui", "une-fois" -> d.kind() == DecisionKind.PERMISSION ? Protocol.ALLOW_ONCE : null;
-			// a workspace plan is a question with Apply / Reject (opts.contains below keeps it to those)
-			case "non", "refuser" -> d.kind() == DecisionKind.PERMISSION ? Protocol.DENY : d.kind() == DecisionKind.QUESTION ? Protocol.REJECT : null;
+			case "autoriser", "oui", "une-fois" -> d.kind() == DecisionKind.PERMISSION ? Protocol.ALLOW_ONCE : Protocol.YES;
+			// a workspace plan is a question with Apply / Reject, a worker request one with Yes / No
+			case "non", "refuser" -> d.kind() == DecisionKind.PERMISSION ? Protocol.DENY
+				: d.kind() == DecisionKind.QUESTION ? (d.options().contains(Protocol.NO) ? Protocol.NO : Protocol.REJECT) : null;
 			case "appliquer", "apply" -> Protocol.APPLY;
 			case "modifications", "modifs", "modifier" -> Protocol.REQUEST_CHANGES;
 			case "fusionner" -> Protocol.MERGE;
