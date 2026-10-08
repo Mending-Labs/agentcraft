@@ -58,6 +58,9 @@ function notes(role: Role, tools: AgentTool[]): string {
     `- Every command is checked against AgentCraft's policy, and anything it cannot allow by itself is shown to ${userName()}, who may deny it. Never work around a denial: find another way or use ask_user.`,
     `- Do not spawn sub-agents, do not search the web, and ask questions only with ask_user (not request_user_input).`,
     role === 'lead' ? '- You are read-only: never modify files or run commands that change anything.' : '',
+    role === 'lead'
+      ? '- Your shell has no network access (HTTP APIs, curl, Invoke-WebRequest, git fetch all fail) and runs PowerShell in constrained language mode (no .NET method calls such as .GetType()). For anything that needs the network, create a task for a worker (they have network access), or use your MCP tools.'
+      : '',
   ]
     .filter((l) => l !== '')
     .join('\n');

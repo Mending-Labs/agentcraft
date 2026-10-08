@@ -79,6 +79,33 @@ describe('the lead reading git repos in its workspaces (policy, auto mode or not
   });
 });
 
+describe('a Codex lead and the network', () => {
+  it('is refused at once (its sandbox has no network), without asking the user, auto mode or not', async () => {
+    const { CodexEngine } = await import('../src/agents/codex/engine.js');
+    const { TeamBackend } = await import('../src/agents/team.js');
+    const home = tempDir();
+    const h = makeForeman(home, ['--backend', 'codex']);
+    try {
+      const codex = new CodexEngine(h.fm, h.cfg.codex, { bin: process.execPath, args: ['-e', ''] });
+      const team = new TeamBackend(h.fm, h.cfg.claude, { name: 'codex', engines: { lead: codex, worker: codex } });
+      const ac = new AbortController();
+      const gate = (team as unknown as { permissionGate(a: string, r: string, c: string, t: unknown): (t: string, i: unknown, s: AbortSignal) => Promise<{ allow: boolean; message?: string }> }).permissionGate(
+        'marlow',
+        'lead',
+        process.cwd(),
+        { signal: ac.signal, reason: () => undefined },
+      );
+      const r = await gate('PowerShell', { command: "Invoke-WebRequest -Uri 'https://gitlab.example/api/v4/projects/1'" }, ac.signal);
+      expect(r.allow).toBe(false);
+      expect(r.message).toMatch(/no network access.*worker/);
+      expect(h.fm.decisions.open()).toHaveLength(0);
+    } finally {
+      await h.fm.close();
+      rmrf(home);
+    }
+  });
+});
+
 describe('auto mode answers', () => {
   let h: Harness;
   let home: string;

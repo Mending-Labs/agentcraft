@@ -687,6 +687,15 @@ export class TeamBackend implements Backend {
         this.fm.agentLog(agentId, 'error', `blocked: ${describeToolCall(toolName, input)} (${verdict.reason})`);
         return { allow: false, message: verdict.reason };
       }
+      // A Codex lead runs in a read-only sandbox without network: an approved network command still
+      // fails there (curl: could not connect), so asking the user would only waste their time.
+      if (role === 'lead' && this.engineFor(agentId).id === 'codex' && /network access|uses the network/i.test(verdict.reason)) {
+        const message =
+          'Your sandbox has no network access: this cannot work, even if approved (nobody was asked). For anything that needs the network ' +
+          '(HTTP APIs, curl, Invoke-WebRequest, git fetch), create a task for a worker (workers have network access), or use your MCP tools.';
+        this.fm.agentLog(agentId, 'tool', `no network for the lead: ${describeToolCall(toolName, input)}`);
+        return { allow: false, message };
+      }
       if (this.fm.autoFor('permissions')) {
         const risk = autoRisk(verdict, {
           role,
