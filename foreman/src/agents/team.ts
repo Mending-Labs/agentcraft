@@ -40,6 +40,7 @@ import { leadSystemPrompt, planPrompt, RESUME_PROMPT, reviewPrompt, workerSystem
 import { fetchPulls, githubOrigin, prRefs, pullBriefs, type PullRequest } from '../pulls.js';
 import type { Engine, EngineId, PermissionGate, Role, TurnStats } from './engine.js';
 import { agentTools, type ToolHooks, type TurnHandle } from './tools.js';
+import { modelLabel } from './models.js';
 import { userName } from '../user.js';
 
 // policy: our own team tools are trusted (the Claude engine exposes them as this MCP server)
@@ -168,6 +169,8 @@ export class TeamBackend implements Backend {
   private retryTimer: NodeJS.Timeout | undefined;
   private retryDelayMs = 2000;
   private readonly pullFetcher: PullFetcher;
+  /** the model each agent's last turn really ran (shown on its nameplate) */
+  private reportedModels = new Map<string, { engine: EngineId; label: string }>();
 
   constructor(
     protected fm: Foreman,
@@ -213,6 +216,19 @@ export class TeamBackend implements Backend {
     return e.byAgent?.[agentId] ?? (agentId === LEAD ? e.lead : e.worker);
   }
 
+  /**
+   * Every agent's nameplate shows its engine and model: the configured model until a turn reports
+   * the real one (onModel). Off-shift agents too: it is what they would run when spawned.
+   */
+  private showEngines(): void {
+    for (const a of this.fm.agents()) {
+      const engine = this.engineFor(a.id);
+      const reported = this.reportedModels.get(a.id);
+      const model = (reported?.engine === engine.id ? reported.label : undefined) ?? modelLabel(engine.model(a.id === LEAD ? 'lead' : 'worker')) ?? engine.label;
+      this.fm.setAgent(a.id, { engine: engine.id, model });
+    }
+  }
+
   /** Every engine on the team (each is checked at start). */
   private enginesInUse(): Engine[] {
     return [...new Set([LEAD, ...this.team].map((id) => this.engineFor(id)))];
@@ -222,9 +238,11 @@ export class TeamBackend implements Backend {
   private teamLabel(): string {
     const lead = this.engineFor(LEAD);
     const workers = [...new Set(this.team.map((w) => this.engineFor(w)))];
-    if (!workers.length || (workers.length === 1 && workers[0] === lead)) return `${lead.label} (lead ${lead.model('lead')}, workers ${lead.model('worker')})`;
-    if (workers.length === 1) return `${lead.label} lead ${lead.model('lead')} · ${workers[0]!.label} workers ${workers[0]!.model('worker')}`;
-    return `${lead.label} lead ${lead.model('lead')} · ${this.team.map((w) => `${this.fm.nameOf(w)} ${this.engineFor(w).label}`).join(', ')}`;
+    // aliases as configured ("opus"), full model ids as display names ("claude-opus-5-5" -> "Opus 5.5")
+    const m = (e: Engine, role: Role) => (/^[a-z]+$/.test(e.model(role)) ? e.model(role) : (modelLabel(e.model(role)) ?? e.model(role)));
+    if (!workers.length || (workers.length === 1 && workers[0] === lead)) return `${lead.label} (lead ${m(lead, 'lead')}, workers ${m(lead, 'worker')})`;
+    if (workers.length === 1) return `${lead.label} lead ${m(lead, 'lead')} · ${workers[0]!.label} workers ${m(workers[0]!, 'worker')}`;
+    return `${lead.label} lead ${m(lead, 'lead')} · ${this.team.map((w) => `${this.fm.nameOf(w)} ${this.engineFor(w).label}`).join(', ')}`;
   }
 
   private isStopped(agentId: string): boolean {
@@ -250,7 +268,9 @@ export class TeamBackend implements Backend {
     // the spend survives restarts: every session's cost is persisted, so the total is their sum
     const spent = Object.values(this.fm.store.data.sessions).reduce((sum, s) => sum + (s.costUsd || 0), 0);
     if (spent > 0) this.fm.setStatus({ costUsd: Math.round(spent * 1000) / 1000 });
+    this.showEngines();
     await this.checkAuth();
+    this.showEngines(); // the auth check may have learned the configured model
     if (!this.cfg.resumeOnStart) {
       this.st.inflight = {};
     } else {
@@ -792,6 +812,12 @@ export class TeamBackend implements Backend {
           },
           onSession: (id) => {
             if (this.fm.store.data.sessions[job.sessionKey]?.sessionId !== id) this.recordSession(job.sessionKey, id, model, engine.id);
+          },
+          onModel: (m) => {
+            const label = modelLabel(m);
+            if (!label) return;
+            this.reportedModels.set(agentId, { engine: engine.id, label });
+            this.fm.setAgent(agentId, { engine: engine.id, model: label });
           },
         });
       } finally {

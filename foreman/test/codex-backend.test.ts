@@ -248,7 +248,13 @@ describe('shell command unwrapping', () => {
   it('shows and checks the command inside Codex shell wrappers', () => {
     expect(shellCommand(`"C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command 'type hello.txt'`)).toEqual({ tool: 'PowerShell', command: 'type hello.txt' });
     expect(shellCommand(`"C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -NoProfile -Command "type 'a b.txt'"`)).toEqual({ tool: 'PowerShell', command: "type 'a b.txt'" });
-    expect(shellCommand(`powershell.exe -Command 'echo ''hi'''`)).toEqual({ tool: 'PowerShell', command: "echo 'hi'" });
+    // a real one from Codex (shlex-quoted: '...' and "..." pieces joined into one word)
+    expect(shellCommand(`"C:\\x\\powershell.exe" -Command 'Get-Content src/cli.ts | Where-Object { $_ -match '"'"'^  notes '"' } | ForEach-Object { "'$helpMatch = 1 }'`)).toEqual({
+      tool: 'PowerShell',
+      command: "Get-Content src/cli.ts | Where-Object { $_ -match '^  notes ' } | ForEach-Object { $helpMatch = 1 }",
+    });
+    expect(shellCommand(`/bin/bash -lc 'echo "a b" '"'"'c'"'"''`)).toEqual({ tool: 'Bash', command: `echo "a b" 'c'` });
+    expect(shellCommand(`/bin/bash -lc 'unterminated`)).toEqual({ tool: 'Bash', command: `'unterminated` });
     expect(shellCommand(`"C:\\x\\powershell.exe" -Command '$t = Join-Path (Get-Location).Path '"'"'.test-tmp'"'"'; npm test'`)).toEqual({ tool: 'PowerShell', command: "$t = Join-Path (Get-Location).Path '.test-tmp'; npm test" });
     expect(shellCommand(`/bin/bash -lc 'npm test'`)).toEqual({ tool: 'Bash', command: 'npm test' });
     expect(shellCommand(`/bin/zsh -lc "git status"`)).toEqual({ tool: 'Bash', command: 'git status' });

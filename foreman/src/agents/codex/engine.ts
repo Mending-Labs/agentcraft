@@ -230,6 +230,7 @@ export class CodexEngine implements Engine {
       threadId = started.thread.id as string;
       mapper.stats.sessionId = threadId;
       spec.onSession(threadId);
+      if (typeof started.model === 'string' && started.model) spec.onModel?.(started.model);
       if (abort.signal.aborted) return mapper.stats;
       const turn = await server.request<any>('turn/start', { threadId, input: [{ type: 'text', text: spec.prompt, text_elements: [] }] }, 60_000);
       turnId = turn?.turn?.id;

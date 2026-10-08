@@ -65,6 +65,9 @@ describe('mixed team: Claude lead, Codex worker', () => {
   it('plans with Claude, builds with Codex, merges', async () => {
     const fm = h.fm;
     expect(fm.status.message).toBe('Claude lead opus · Codex workers gpt-fake');
+    // each nameplate shows its engine and model (the configured one until a turn reports the real one)
+    expect(fm.agent('marlow')).toMatchObject({ engine: 'claude', model: 'Opus' });
+    expect(fm.agent('kit')).toMatchObject({ engine: 'codex', model: 'gpt-fake' });
     const goal = await fm.submitGoal('Add a --version flag');
     await until(() => fm.decisions.open().some((d) => d.kind === 'merge' && d.taskId === 't1'), 60_000);
     await fm.answerDecision(fm.decisions.open().find((d) => d.kind === 'merge')!.id, 'Merge');
@@ -72,6 +75,7 @@ describe('mixed team: Claude lead, Codex worker', () => {
     expect(fs.readFileSync(path.join(repoPath, 'src', 'cli.ts'), 'utf8')).toContain('// --version from Codex');
     expect(fm.store.data.sessions[`marlow:${goal.id}`]!.engine).toBe('claude');
     expect(fm.store.data.sessions['kit:t1']!.engine).toBe('codex');
+    expect(fm.agent('marlow')!.model).toBe('fake'); // what the (fake) CLI reported at init
     expect(fm.store.logTail('kit').some((e) => e.text.startsWith('Starting work t1 (Codex gpt-fake)'))).toBe(true);
   }, 120_000);
 });

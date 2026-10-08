@@ -106,9 +106,14 @@ export class ClaudeEngine implements Engine {
     if (abort.signal.aborted) closeQuery();
     else abort.signal.addEventListener('abort', closeQuery, { once: true });
     let session: string | undefined;
+    let model: string | undefined;
     for await (const msg of q) {
       if (abort.signal.aborted) break; // nothing from an aborted turn reaches the world
       mapper.handle(msg);
+      if (mapper.model && mapper.model !== model) {
+        model = mapper.model;
+        spec.onModel?.(model);
+      }
       if (mapper.stats.sessionId && mapper.stats.sessionId !== session) {
         session = mapper.stats.sessionId;
         spec.onSession(session);

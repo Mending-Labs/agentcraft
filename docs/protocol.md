@@ -52,6 +52,8 @@ Exact option labels: merge decisions use `Merge`, `Request changes`, `Reject`; p
 | `worktree` | string | no | id of the worktree the agent is working in (see Repo.worktrees) |
 | `paused` | boolean | yes |  |
 | `active` | boolean | yes | false = off shift (not on the current team, or stopped by the user); render idle in the lounge |
+| `engine` | `claude` \| `codex` | no | which engine runs this agent (absent: the sim) |
+| `model` | string | no | the model it runs, for display, e.g. "Opus 5.5" or "GPT-6 Astra" (the real model once a turn reported it) |
 
 ### <a id="logentry"></a>LogEntry
 

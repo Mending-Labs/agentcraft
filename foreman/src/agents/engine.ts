@@ -55,6 +55,8 @@ export interface TurnSpec {
   onProcess(child: ChildProcess): void;
   /** the session id, as soon as the engine knows it (persisted for resume) */
   onSession(sessionId: string): void;
+  /** the model the turn really runs (e.g. "claude-opus-5-5"), as soon as the engine knows it */
+  onModel?(model: string): void;
 }
 
 export type AuthCheck = { ok: true; account: string } | { ok: false; message: string };

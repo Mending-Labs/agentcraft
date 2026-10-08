@@ -10,7 +10,7 @@
 [![Minecraft 26.3](https://img.shields.io/badge/Minecraft-26.3-8fa98b)](https://www.minecraft.net)
 [![Fabric](https://img.shields.io/badge/mod%20loader-Fabric-d97757)](https://fabricmc.net)
 [![Claude Agent SDK](https://img.shields.io/badge/agents-Claude%20Agent%20SDK-2fa3a0)](https://code.claude.com/docs/en/agent-sdk/overview)
-[![Tests](https://img.shields.io/badge/tests-533%20passing-3b2a20)](foreman/test)
+[![Tests](https://img.shields.io/badge/tests-548%20passing-3b2a20)](foreman/test)
 
 <img src="docs/img/readme/hero.jpg" alt="The AgentCraft HQ at golden hour" width="100%">
 
@@ -225,7 +225,8 @@ tools\launch.ps1 -Repo C:\path\to\your\repo -ForemanArgs '--worker-engine','code
 Codex agents live in the same studio and follow the same rules: their own git worktrees, every command
 checked by AgentCraft's policy (and asked in game when it needs you), the lead's review, and your
 **Merge**. They never get your own Codex MCP servers, plugins, apps or web search. Pick models with
-`--codex-model`, and mix engines per agent with `--engines kit=codex,wren=claude`.
+`--codex-model`, and mix engines per agent with `--engines kit=codex,wren=claude`. Every agent's nameplate shows the
+model it runs, like **Opus 5.5** or **GPT-6 Astra**, so a mixed team is easy to read at a glance.
 
 **Your name.** The agents call you by your OS user name. Change it with
 `-ForemanArgs '--user-name','Sam'`, `AGENTCRAFT_USER_NAME`, or `{"userName": "Sam"}` in

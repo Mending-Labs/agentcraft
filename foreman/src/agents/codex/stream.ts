@@ -16,14 +16,42 @@ export function shellCommand(command: string): { tool: 'Bash' | 'PowerShell'; co
   const m = /^\s*"?(?:[^"]*[\\/])?(powershell|pwsh|bash|zsh|sh)(?:\.exe)?"?((?:\s+-(?!c\b|command\b|lc\b)[a-zA-Z]+)*)\s+-(?:c|command|lc)\s+([\s\S]+)$/i.exec(command);
   if (!m) return { tool: 'Bash', command };
   const shell = m[1]!.toLowerCase();
-  let inner = m[3]!.trim();
-  const q = inner[0];
-  if ((q === "'" || q === '"') && inner.endsWith(q) && inner.length >= 2) {
-    inner = inner.slice(1, -1);
-    // a quote inside single quotes: '"'"' (shlex style, any shell), '' (PowerShell) or '\'' (POSIX)
-    if (q === "'") inner = inner.replace(/'"'"'/g, "'").replace(shell === 'powershell' || shell === 'pwsh' ? /''/g : /'\\''/g, "'");
-  }
+  const raw = m[3]!.trim();
+  const inner = /^['"]/.test(raw) ? (shellWord(raw) ?? raw) : raw;
   return { tool: shell === 'powershell' || shell === 'pwsh' ? 'PowerShell' : 'Bash', command: inner };
+}
+
+/**
+ * Codex shows a command's argument shell-quoted (shlex style, on every platform): adjacent '...'
+ * and "..." pieces form one word, e.g. 'a '"'"'b'"'"'' is a 'b'. Returns the word's text, or
+ * undefined when the text is not exactly one word (then it is shown as it is).
+ */
+function shellWord(s: string): string | undefined {
+  let out = '';
+  let i = 0;
+  while (i < s.length) {
+    const c = s[i]!;
+    if (c === "'") {
+      const end = s.indexOf("'", i + 1);
+      if (end < 0) return undefined;
+      out += s.slice(i + 1, end);
+      i = end + 1;
+    } else if (c === '"') {
+      i++;
+      while (i < s.length && s[i] !== '"') {
+        if (s[i] === '\\' && i + 1 < s.length && '"\\$`\n'.includes(s[i + 1]!)) i++;
+        out += s[i++];
+      }
+      if (i >= s.length) return undefined;
+      i++;
+    } else if (/\s/.test(c)) {
+      return undefined; // a second word
+    } else {
+      if (c === '\\' && i + 1 < s.length) i++;
+      out += s[i++];
+    }
+  }
+  return out;
 }
 
 export class CodexStreamMapper {
