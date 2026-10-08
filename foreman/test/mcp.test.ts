@@ -75,6 +75,45 @@ describe('McpCatalog', () => {
   });
 });
 
+describe('a local MCP server (command)', () => {
+  // a minimal stdio MCP server: answers initialize and tools/list, reports its env
+  const fakeServer = [
+    "const rl = require('readline').createInterface({ input: process.stdin });",
+    "rl.on('line', (l) => { const m = JSON.parse(l); if (m.id === undefined) return;",
+    "  const result = m.method === 'initialize' ? { protocolVersion: '2025-06-18', capabilities: {} }",
+    "    : { tools: [{ name: 'get_mr', annotations: { readOnlyHint: true } }, { name: 'merge_mr', annotations: { readOnlyHint: false } },",
+    "      { name: 'token_ok_' + (process.env.TOKEN === 's3cret') }] };",
+    "  process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: m.id, result }) + '\\n'); });",
+  ].join('\n');
+  const cfg = {
+    gl: {
+      command: process.execPath,
+      args: ['-e', fakeServer],
+      env: { API: 'https://gl.example' },
+      secretEnv: { TOKEN: 'AC_TEST_GL' },
+      readEnv: { MODE: 'readonly' },
+      lead: 'write',
+      workers: 'read',
+    },
+  };
+
+  it('lists its tools by running it with its secret, and gives each role its env', async () => {
+    const vault = new Map([['ac_test_gl', 's3cret']]);
+    const cat = new McpCatalog(parseMcp(cfg), silentLogger, fetch, (n) => vault.get(n), () => [...vault.keys()]);
+    await cat.load();
+    expect(cat.readOnlyTools('gl')).toEqual(['get_mr']);
+    expect(cat.isReadOnly('gl', 'token_ok_true')).toBe(false); // the secret reached the process (no annotation: by name)
+    expect(cat.stdioEnv(cat.servers.gl!, 'worker')).toEqual({ API: 'https://gl.example', TOKEN: 's3cret', MODE: 'readonly' });
+    expect(cat.stdioEnv(cat.servers.gl!, 'lead')).toEqual({ API: 'https://gl.example', TOKEN: 's3cret' });
+    expect(cat.tokenVars()).toContain('TOKEN');
+  });
+
+  it('is left out while its secret is missing', () => {
+    const cat = new McpCatalog(parseMcp(cfg), silentLogger);
+    expect(cat.forRole('lead')).toEqual([]);
+  });
+});
+
 describe('secret names', () => {
   it('match whatever the case ("gitlab" serves bearerTokenEnvVar "Gitlab")', () => {
     const vault = new Map([['gitlab', 'tok']]);

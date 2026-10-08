@@ -155,11 +155,15 @@ export class CodexEngine implements Engine {
   private teamMcp(role: Role): Record<string, unknown> {
     const out: Record<string, unknown> = {};
     for (const [name, s] of this.fm.mcp.forRole(role)) {
-      const base = { url: s.url, enabled: true, ...(s.bearerTokenEnvVar ? { bearer_token_env_var: s.bearerTokenEnvVar } : {}) };
+      const base = s.command
+        ? { command: s.command, args: s.args ?? [], env: this.fm.mcp.stdioEnv(s, role) ?? {}, enabled: true }
+        : { url: s.url, enabled: true, ...(s.bearerTokenEnvVar ? { bearer_token_env_var: s.bearerTokenEnvVar } : {}) };
       if (this.fm.mcp.access(name, role) === 'write') out[name] = base;
       else {
         const tools = this.fm.mcp.readOnlyTools(name);
         if (tools?.length) out[name] = { ...base, enabled_tools: tools };
+        // a local server with its own read-only mode (readEnv) is safe to open before the catalogue is known
+        else if (s.command && s.readEnv && Object.keys(s.readEnv).length) out[name] = base;
       }
     }
     return out;

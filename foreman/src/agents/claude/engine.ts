@@ -81,7 +81,12 @@ export class ClaudeEngine implements Engine {
         [MCP_SERVER]: mcpServer(spec.tools),
         // the user's own servers this role may use (config "mcp"); every call still goes through the policy
         ...Object.fromEntries(
-          this.fm.mcp.forRole(role).map(([name, s, token]) => [name, { type: 'http' as const, url: s.url, ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}) }]),
+          this.fm.mcp.forRole(role).map(([name, s, token]) =>
+            s.command
+              ? // a local server: its own process, with its secrets (and read-only mode for "read") in its env only
+                [name, { type: 'stdio' as const, command: s.command, args: s.args ?? [], env: this.fm.mcp.stdioEnv(s, role) ?? {} }]
+              : [name, { type: 'http' as const, url: s.url!, ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}) }],
+          ),
         ),
       },
       systemPrompt: { type: 'preset', preset: 'claude_code', append: spec.instructions },

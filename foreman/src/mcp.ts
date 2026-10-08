@@ -14,12 +14,22 @@
 // One token per project (Seed: a token gives access to one project): "secretPrefix" turns the entry
 // into a template, and every secret named <prefix><PROJECT> (/secret set SEED_MCP_BANANA) becomes
 // its own server "<name>_<project>" (seed_banana) with that token and the template's access.
+import { spawn } from 'node:child_process';
 import type { Logger } from './context.js';
 
 export type McpAccess = 'none' | 'read' | 'write';
 
 export interface McpServerConfig {
-  url: string;
+  /** an HTTP server ... */
+  url?: string;
+  /** ... or a local one AgentCraft starts (stdio): command + args + env */
+  command?: string;
+  args?: string[];
+  env?: Record<string, string>;
+  /** local server: environment variables filled from the vault, { VAR: secretName } (only that process gets them) */
+  secretEnv?: Record<string, string>;
+  /** local server: extra variables for a role with read access (the server's own read-only mode) */
+  readEnv?: Record<string, string>;
   bearerTokenEnvVar?: string;
   /** template: one server per secret named <secretPrefix><PROJECT> */
   secretPrefix?: string;
@@ -39,12 +49,25 @@ export function parseMcp(v: unknown): Record<string, McpServerConfig> {
   for (const [name, raw] of Object.entries(v as Record<string, unknown>)) {
     if (!/^[A-Za-z0-9_-]+$/.test(name) || name === 'agentcraft') throw new Error(`bad MCP server name "${name}" in config.json "mcp"`);
     const o = (raw ?? {}) as Record<string, unknown>;
-    if (typeof o.url !== 'string' || !/^https?:\/\//.test(o.url)) throw new Error(`MCP server "${name}" needs an http(s) "url"`);
+    const isUrl = typeof o.url === 'string' && /^https?:\/\//.test(o.url);
+    if (!isUrl && typeof o.command !== 'string') throw new Error(`MCP server "${name}" needs an http(s) "url" or a "command"`);
+    const strings = (v: unknown, what: string): Record<string, string> | undefined => {
+      if (v === undefined) return undefined;
+      if (!v || typeof v !== 'object' || Object.values(v).some((x) => typeof x !== 'string')) throw new Error(`MCP server "${name}": "${what}" must map names to strings`);
+      return v as Record<string, string>;
+    };
+    if (o.args !== undefined && (!Array.isArray(o.args) || o.args.some((a) => typeof a !== 'string'))) throw new Error(`MCP server "${name}": "args" must be a list of strings`);
+    const env = strings(o.env, 'env');
+    const secretEnv = strings(o.secretEnv, 'secretEnv');
+    const readEnv = strings(o.readEnv, 'readEnv');
     if (o.secretPrefix !== undefined && (typeof o.secretPrefix !== 'string' || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(o.secretPrefix))) {
       throw new Error(`MCP server "${name}": "secretPrefix" must look like SEED_MCP_`);
     }
     out[name] = {
-      url: o.url,
+      ...(isUrl ? { url: o.url as string } : { command: o.command as string, args: (o.args as string[] | undefined) ?? [] }),
+      ...(env ? { env } : {}),
+      ...(secretEnv ? { secretEnv } : {}),
+      ...(readEnv ? { readEnv } : {}),
       ...(typeof o.bearerTokenEnvVar === 'string' ? { bearerTokenEnvVar: o.bearerTokenEnvVar } : {}),
       ...(typeof o.secretPrefix === 'string' ? { secretPrefix: o.secretPrefix } : {}),
       lead: access(o.lead),
@@ -122,16 +145,35 @@ export class McpCatalog {
    * "gitlab" serves "Gitlab"), else that environment variable.
    */
   token(s: McpServerConfig): string | undefined {
-    if (!s.bearerTokenEnvVar) return undefined;
+    return s.bearerTokenEnvVar ? this.secretValue(s.bearerTokenEnvVar) : undefined;
+  }
+
+  /** A secret by name, whatever its case: the vault first, else the (captured) environment. */
+  private secretValue(name: string): string | undefined {
     this.captureEnv();
-    const want = s.bearerTokenEnvVar.toUpperCase();
-    const stored = this.secretNames().find((n) => n.toUpperCase() === want) ?? s.bearerTokenEnvVar;
+    const want = name.toUpperCase();
+    const stored = this.secretNames().find((n) => n.toUpperCase() === want) ?? name;
     return this.secret(stored) ?? this.envTokens.get(want);
+  }
+
+  /**
+   * The environment of a local server for a role: its env, its secrets from the vault, and its
+   * read-only variables for a role with read access. Undefined when a secret is missing.
+   */
+  stdioEnv(s: McpServerConfig, role: 'lead' | 'worker'): Record<string, string> | undefined {
+    const out: Record<string, string> = { ...(s.env ?? {}) };
+    for (const [v, secretName] of Object.entries(s.secretEnv ?? {})) {
+      const value = this.secretValue(secretName);
+      if (!value) return undefined;
+      out[v] = value;
+    }
+    if ((role === 'lead' ? s.lead : s.workers) === 'read') Object.assign(out, s.readEnv ?? {});
+    return out;
   }
 
   /** Names of the token variables: kept out of every agent's environment. */
   tokenVars(): string[] {
-    return Object.values(this.servers).flatMap((s) => (s.bearerTokenEnvVar ? [s.bearerTokenEnvVar] : []));
+    return Object.values(this.servers).flatMap((s) => [...(s.bearerTokenEnvVar ? [s.bearerTokenEnvVar] : []), ...Object.keys(s.secretEnv ?? {})]);
   }
 
   /** `env` without the token variables (an agent could otherwise read a token and bypass its access). */
@@ -163,6 +205,14 @@ export class McpCatalog {
     const out: Array<[string, McpServerConfig, string | undefined]> = [];
     for (const [name, s] of Object.entries(this.servers)) {
       if (this.access(name, role) === 'none') continue;
+      if (s.command) {
+        if (!this.stdioEnv(s, role)) {
+          this.log.warn(`MCP server ${name}: a secret is missing (in game: /secret set ${Object.values(s.secretEnv ?? {}).join(' / ')}), so the team does not get it`);
+          continue;
+        }
+        out.push([name, s, undefined]);
+        continue;
+      }
       const token = this.token(s);
       if (s.bearerTokenEnvVar && !token) {
         this.log.warn(`MCP server ${name}: no ${s.bearerTokenEnvVar} (in game: /secret set ${s.bearerTokenEnvVar}), so the team does not get it`);
@@ -207,14 +257,65 @@ export class McpCatalog {
     return p;
   }
 
+  /** A local server's catalogue: start it (full access, to see every tool), ask, stop it. */
+  private fetchToolsStdio(s: McpServerConfig): Promise<McpTool[]> {
+    const env = this.stdioEnv({ ...s, lead: 'write' }, 'lead');
+    if (!env) return Promise.reject(new Error('a secret is missing'));
+    return new Promise((resolve, reject) => {
+      const child = spawn(s.command!, s.args ?? [], { env: { ...process.env, ...env }, stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true });
+      const timer = setTimeout(() => finish(new Error('no answer in 60 s')), 60_000);
+      let buf = '';
+      const tools: McpTool[] = [];
+      const finish = (err?: Error) => {
+        clearTimeout(timer);
+        child.kill();
+        if (err) reject(err);
+        else resolve(tools);
+      };
+      const send = (m: unknown) => child.stdin.write(`${JSON.stringify(m)}\n`);
+      child.on('error', (e) => finish(e));
+      child.on('exit', (code) => finish(new Error(`exited (${code}) before answering`)));
+      child.stdout.setEncoding('utf8');
+      child.stdout.on('data', (chunk: string) => {
+        buf += chunk;
+        let i: number;
+        while ((i = buf.indexOf('\n')) >= 0) {
+          const line = buf.slice(0, i).trim();
+          buf = buf.slice(i + 1);
+          if (!line.startsWith('{')) continue;
+          let msg: any;
+          try {
+            msg = JSON.parse(line);
+          } catch {
+            continue;
+          }
+          if (msg.error) return finish(new Error(msg.error.message ?? 'error'));
+          if (msg.id === 1) {
+            send({ jsonrpc: '2.0', method: 'notifications/initialized', params: {} });
+            send({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} });
+          } else if (msg.id === 2) {
+            for (const t of msg.result?.tools ?? []) {
+              const hint = t?.annotations?.readOnlyHint;
+              tools.push({ name: String(t.name), ...(typeof hint === 'boolean' ? { readOnly: hint } : {}) });
+            }
+            child.removeAllListeners('exit');
+            finish();
+          }
+        }
+      });
+      send({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'agentcraft-foreman', version: '0.1.0' } } });
+    });
+  }
+
   private async fetchTools(name: string): Promise<McpTool[]> {
     const s = this.servers[name]!;
+    if (s.command) return this.fetchToolsStdio(s);
     const token = this.token(s);
     if (s.bearerTokenEnvVar && !token) throw new Error(`no ${s.bearerTokenEnvVar}`);
     let session: string | undefined;
     let id = 0;
     const call = async (method: string, params: unknown, notify = false): Promise<any> => {
-      const res = await this.fetchFn(s.url, {
+      const res = await this.fetchFn(s.url!, {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
