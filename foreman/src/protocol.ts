@@ -181,6 +181,11 @@ export const Repo = z.object({
 });
 export type Repo = z.infer<typeof Repo>;
 
+export const MemoryKind = z
+  .enum(['plan', 'report', 'review', 'summary', 'decision', 'note'])
+  .describe("plan = the goal's one plan, report = a task report, review = a review, summary = the goal's closing summary, decision, note");
+export type MemoryKind = z.infer<typeof MemoryKind>;
+
 export const MemoryEntry = z.object({
   id: Id.describe('"shared/<slug>" or "<agentId>/<slug>"'),
   scope: z.string().describe('"shared" or an agent id'),
@@ -188,6 +193,9 @@ export const MemoryEntry = z.object({
   body: z.string().describe('markdown'),
   updated: Ts,
   author: Id.optional().describe('agent id or "user" that last wrote it'),
+  goalId: Id.optional().describe('the goal the note belongs to (the library groups notes by goal)'),
+  kind: MemoryKind.optional(),
+  archived: z.boolean().optional().describe("folded into the goal's summary: shown under the Archives tab only"),
 });
 export type MemoryEntry = z.infer<typeof MemoryEntry>;
 

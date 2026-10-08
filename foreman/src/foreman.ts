@@ -54,6 +54,8 @@ export interface Backend {
   onMergeConflict?(task: Task, info: { base: string; branch: string; files: string[]; reason: string }): boolean;
   onTaskAction(task: Task, action: 'reassign' | 'cancel' | 'retry' | 'prioritize', arg?: string): void;
   onAgentAction(agentId: string, action: 'pause' | 'resume' | 'stop' | 'spawn', arg?: string): Promise<void> | void;
+  /** A goal just completed (the lead writes its summary, which archives its other notes). */
+  onGoalComplete?(goal: Goal): void;
 }
 
 export type Reply = (msg: Outbound) => void;
@@ -105,6 +107,9 @@ export class Foreman {
     this.tasks = new TaskGraph(this.ctx);
     this.bus = new MessageBus(this.ctx);
     this.memory = new Memory(this.ctx, path.join(opts.config.dataDir, 'memory'));
+    // notes written before they recorded their goal: attach them (the library groups by goal)
+    const attached = this.memory.backfillGoals(this.store.data.goals, this.store.data.feed);
+    if (attached) this.log.info(`memory: attached ${attached} older notes to their goal`);
     this.decisions = new DecisionQueue(this.ctx);
     this.repos = new RepoManager(this.ctx, path.join(opts.config.dataDir, 'worktrees'), { mergeStyle: opts.config.mergeStyle, signMerges: opts.config.signMerges });
     this.notifier =
@@ -355,6 +360,7 @@ export class Foreman {
       if (complete && !wasDone) {
         this.bus.feed('goal', `Goal complete: ${g.text}`);
         this.notify('info', `Goal complete: ${truncate(g.text, 80)}`);
+        this.backend?.onGoalComplete?.(g);
       }
     });
   }

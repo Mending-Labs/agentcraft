@@ -151,6 +151,9 @@ Exact option labels: merge decisions use `Merge`, `Request changes`, `Reject`; p
 | `body` | string | yes | markdown |
 | `updated` | integer | yes | epoch milliseconds |
 | `author` | string | no | agent id or "user" that last wrote it |
+| `goalId` | string | no | the goal the note belongs to (the library groups notes by goal) |
+| `kind` | `plan` \| `report` \| `review` \| `summary` \| `decision` \| `note` | no | plan = the goal's one plan, report = a task report, review = a review, summary = the goal's closing summary, decision, note |
+| `archived` | boolean | no | folded into the goal's summary: shown under the Archives tab only |
 
 ### <a id="goal"></a>Goal
 

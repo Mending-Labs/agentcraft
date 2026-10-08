@@ -1019,6 +1019,22 @@ export class TeamBackend implements Backend {
     this.fm.setAgent(job.agentId, { state: 'idle', station: 'lounge', activity: 'idle' });
   }
 
+  /**
+   * A goal is complete: the lead writes its one summary note, which archives the goal's other
+   * notes (the library stays readable). Skipped when the goal left fewer than two notes or already
+   * has its summary.
+   */
+  onGoalComplete(goal: Goal): void {
+    const notes = this.fm.memory.forGoal(goal.id).filter((e) => !e.archived);
+    if (notes.length < 2 || notes.some((e) => e.kind === 'summary') || this.isStopped(LEAD)) return;
+    const prompt = [
+      `The goal is complete: "${goal.text}".`,
+      `Write its summary now: ONE write_memory with kind "summary" and a title starting "Bilan :" (or "Summary:") - what was decided and done (tasks, merges, repos), the conclusions of the reports, what remains open.`,
+      `Its other ${notes.length} notes are then archived: put in the summary whatever from them is still worth reading. Do nothing else.`,
+    ].join('\n');
+    this.enqueue({ kind: 'followup', agentId: LEAD, goalId: goal.id, sessionKey: `${LEAD}:${goal.id}`, prompt });
+  }
+
   /** how many times each task went to the lead as blocked (a third time reaches the user) */
   private blockedEscalations = new Map<string, number>();
 

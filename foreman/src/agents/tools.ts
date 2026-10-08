@@ -172,15 +172,19 @@ export function agentTools(fm: Foreman, agentId: string, role: 'lead' | 'worker'
     ),
     tool(
       'write_memory',
-      'Write a markdown note to memory. scope "shared" (whole team) or "private" (only you). mode "append" adds to an existing note with the same title.',
+      `Write a markdown note to memory. scope "shared" (whole team) or "private" (only you). mode "append" adds to an existing note with the same title. kind: plan (one per goal: writing it again updates it), report (a task report), review, decision, summary (the goal's closing summary: it archives the goal's other notes), note.`,
       {
         title: z.string(),
         body: z.string().describe('markdown'),
         scope: z.enum(['shared', 'private']).optional(),
         mode: z.enum(['replace', 'append']).optional(),
+        kind: z.enum(['plan', 'report', 'review', 'decision', 'summary', 'note']).optional(),
       },
-      async ({ title, body, scope, mode }) => {
-        const e = fm.memory.write({ scope: scope === 'private' ? agentId : 'shared', title, body, author: agentId, mode: mode ?? 'replace' });
+      async ({ title, body, scope, mode, kind }) => {
+        // the note belongs to the goal the agent works for (the library groups notes by goal)
+        const taskId = fm.agent(agentId)?.taskId;
+        const goalId = (taskId ? fm.tasks.get(taskId)?.goalId : undefined) ?? fm.currentGoal()?.id;
+        const e = fm.memory.write({ scope: scope === 'private' ? agentId : 'shared', title, body, author: agentId, mode: mode ?? 'replace', ...(goalId ? { goalId } : {}), ...(kind ? { kind } : {}) });
         fm.bus.feed('memory', `${fm.nameOf(agentId)} wrote memory: ${e.title}`, { agentId });
         return withInbox(`Saved memory ${e.id}.`);
       },
