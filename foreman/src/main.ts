@@ -76,7 +76,6 @@ export async function main(argv: string[]): Promise<void> {
   const cfg = loadConfig(argv);
   const log = consoleLogger('foreman', { debug: cfg.debug, quiet: cfg.quiet });
   const users = new UserStore(cfg.home);
-  users.launcherAdmins = cfg.launcherAdmins;
   // a Foreman other machines can reach must know who is talking to it
   if (!LOOPBACK.test(cfg.host) && !users.enabled) {
     log.error(`--host ${cfg.host} makes the Foreman reachable from other machines: add its members first (npm start -- user add <name> admin) or a launcher key (${cfg.home}/launcher.key)`);

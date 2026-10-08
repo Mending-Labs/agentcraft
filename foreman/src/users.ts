@@ -14,10 +14,11 @@
 // A launcher can sign members in instead (no token to hand out): it writes, into the game folder of
 // the AgentCraft instance, a pass signed with a key shared with this Foreman (<home>/launcher.key,
 // or AGENTCRAFT_LAUNCHER_KEY_FILE). Who may have one is the launcher's business (the instance's
-// whitelist in its panel); the Foreman trusts the signature. The first pass of a player creates
-// their member (role "member", or "admin" when config "launcherAdmins" lists their launcher id or
-// one of their Minecraft UUIDs - never a display name, which two players may share); later passes
-// find it again by launcher account id or by any of its Minecraft accounts.
+// whitelist in its panel); the Foreman trusts the signature. A player's pass finds the member that
+// holds one of its Minecraft UUIDs, else the one created from that launcher account, else creates
+// a "member" named after the player. Config "launcherMembers" ([{name, role, minecraft: [uuid...]}])
+// declares people up front: one person's several Minecraft accounts become one member, and roles
+// (admin) go by account - never by display name, which two players may share.
 // Pass: "acl." + base64url(JSON) + "." + base64url(HMAC-SHA256 over "acl." + base64url(JSON)),
 // JSON = {v: 1, aud: "agentcraft", sub: launcher account id, name, mc: [uuid...], iat, exp} (seconds).
 import crypto from 'node:crypto';
@@ -135,9 +136,6 @@ export class UserStore {
 
   private readonly launcherKeyFile: string;
 
-  /** launcher players made admin on their first pass: launcher account ids or Minecraft UUIDs */
-  launcherAdmins: string[] = [];
-
   constructor(home: string) {
     this.file = path.join(home, 'users.json');
     this.launcherKeyFile = process.env.AGENTCRAFT_LAUNCHER_KEY_FILE?.trim() || path.join(home, 'launcher.key');
@@ -156,26 +154,61 @@ export class UserStore {
   /** The member of a launcher pass, created on the first one; new Minecraft accounts are remembered. */
   private fromLauncher(pass: LauncherPass): Member {
     const users = this.list();
-    let u = users.find((x) => x.launcherId === pass.sub) ?? users.find((x) => (x.minecraft ?? []).some((m) => pass.mc.includes(m)));
+    let u = users.find((x) => (x.minecraft ?? []).some((m) => pass.mc.includes(m))) ?? users.find((x) => x.launcherId === pass.sub);
     if (!u) {
       const base = idOf(pass.name) || 'player';
       let id = base;
       for (let i = 2; users.some((x) => x.id === id); i++) id = `${base}-${i}`;
-      // by launcher account id or Minecraft UUID, never by display name (two players may share one)
-      const admins = this.launcherAdmins.map((a) => normalizeUuid(a) ?? a.trim().toLowerCase());
-      const role: UserRole = admins.includes(pass.sub.toLowerCase()) || pass.mc.some((m) => admins.includes(m)) ? 'admin' : 'member';
-      u = { id, name: id === base ? pass.name : `${pass.name} ${id.slice(base.length + 1)}`, role, tokenHash: '', createdAt: Date.now(), launcherId: pass.sub, minecraft: [...new Set(pass.mc)] };
+      u = { id, name: id === base ? pass.name : `${pass.name} ${id.slice(base.length + 1)}`, role: 'member', tokenHash: '', createdAt: Date.now(), launcherId: pass.sub, minecraft: [...new Set(pass.mc)] };
       users.push(u);
       this.save(users);
       return u;
     }
+    // a member found by its launcher account learns that account's (new) Minecraft UUID
     const known = new Set(u.minecraft ?? []);
-    if (pass.mc.some((m) => !known.has(m)) || !u.launcherId) {
-      u.minecraft = [...new Set([...known, ...pass.mc])];
-      u.launcherId ??= pass.sub;
+    const fresh = pass.mc.filter((m) => !known.has(m) && !users.some((x) => x !== u && (x.minecraft ?? []).includes(m)));
+    if (fresh.length) {
+      u.minecraft = [...known, ...fresh];
       this.save(users);
     }
     return u;
+  }
+
+  /**
+   * Config "launcherMembers": people declared up front, by their Minecraft accounts. Creates or
+   * updates each (name, role, accounts); an account declared here leaves any other member.
+   */
+  seedLauncherMembers(list: Array<{ name: string; role?: UserRole; minecraft?: string[] }>): void {
+    if (!list.length) return;
+    const users = this.list();
+    let changed = false;
+    for (const p of list) {
+      const id = idOf(p.name);
+      if (!id || !NAME.test(p.name.trim())) throw new UserError(`launcherMembers: bad member name "${p.name}"`);
+      const role = p.role ?? 'member';
+      if (!ROLES.includes(role)) throw new UserError(`launcherMembers: ${p.name}: role must be one of ${ROLES.join(', ')}`);
+      const mc = (p.minecraft ?? []).map((x) => normalizeUuid(x) ?? '');
+      if (mc.some((x) => !x)) throw new UserError(`launcherMembers: ${p.name}: a Minecraft UUID has 32 hex digits (dashes allowed)`);
+      for (const other of users) {
+        if (other.id === id || !other.minecraft?.some((m) => mc.includes(m))) continue;
+        other.minecraft = other.minecraft.filter((m) => !mc.includes(m));
+        changed = true;
+      }
+      let u = users.find((x) => x.id === id);
+      if (!u) {
+        u = { id, name: p.name.trim(), role, tokenHash: '', createdAt: Date.now(), minecraft: [] };
+        users.push(u);
+        changed = true;
+      }
+      const merged = [...new Set([...(u.minecraft ?? []), ...mc])];
+      if (u.role !== role || u.name !== p.name.trim() || merged.length !== (u.minecraft ?? []).length) {
+        u.role = role;
+        u.name = p.name.trim();
+        u.minecraft = merged;
+        changed = true;
+      }
+    }
+    if (changed) this.save(users);
   }
 
   /** Give a member the Minecraft accounts a launcher pass may name for them. */

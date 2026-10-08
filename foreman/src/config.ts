@@ -116,8 +116,8 @@ export interface Config {
   signMerges: boolean;
   /** shared Foreman: approved branches are pushed and opened as GitLab merge requests (mergerequests.ts) */
   mergeRequests?: MergeRequestConfig;
-  /** shared Foreman: launcher players made admin on their first pass (launcher ids or Minecraft UUIDs, users.ts) */
-  launcherAdmins: string[];
+  /** shared Foreman: people signed in by the launcher, declared by Minecraft accounts (users.ts) */
+  launcherMembers: Array<{ name: string; role?: 'admin' | 'member' | 'viewer'; minecraft?: string[] }>;
   /** team settings (workers, CI, review, lead read commands) and the Claude engine's options */
   claude: ClaudeConfig;
   codex: CodexConfig;
@@ -318,7 +318,7 @@ export function loadConfig(argv: string[], env: NodeJS.ProcessEnv = process.env)
     // the sim answers merges unattended (screenshot QA, --auto-answer): never sign there
     signMerges: bool(pick('sign-merges', 'AGENTCRAFT_SIGN_MERGES'), backend !== 'sim'),
     ...(file.mergeRequests ? { mergeRequests: parseMergeRequests(file.mergeRequests)! } : {}),
-    launcherAdmins: Array.isArray(file.launcherAdmins) ? (file.launcherAdmins as unknown[]).filter((x): x is string => typeof x === 'string') : [],
+    launcherMembers: Array.isArray(file.launcherMembers) ? (file.launcherMembers as Config['launcherMembers']) : [],
     claude: {
       leadModel: str(flags['lead-model']) ?? model ?? str(env.AGENTCRAFT_LEAD_MODEL) ?? str(fileClaude.leadModel) ?? 'opus',
       workerModel: str(flags['worker-model']) ?? model ?? str(env.AGENTCRAFT_WORKER_MODEL) ?? str(fileClaude.workerModel) ?? 'sonnet',

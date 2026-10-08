@@ -212,23 +212,35 @@ describe('members signed in by the launcher', () => {
   const KEY = Buffer.from('k'.repeat(48), 'utf8');
   const QUENTIN = { sub: 'usr_1', name: 'PoPo', mc: ['8667ba71-b85a-4004-af54-457a9734eed7'] };
 
-  it('a valid pass creates the member once; any of their Minecraft accounts finds it again', () => {
+  it('an unknown player becomes a member on their first pass and is found again', () => {
     const home = tempDir();
     cleanup.push(home);
     fs.writeFileSync(path.join(home, 'launcher.key'), KEY.toString('utf8'));
     const users = new UserStore(home);
-    users.launcherAdmins = ['8667BA71-B85A-4004-AF54-457A9734EED7'];
     expect(users.enabled).toBe(true);
     const a = users.authenticate(signLauncherPass(KEY, QUENTIN))!;
-    expect(a).toMatchObject({ id: 'popo', name: 'PoPo', role: 'admin', launcherId: 'usr_1', minecraft: ['8667ba71b85a4004af54457a9734eed7'] });
-    // another Minecraft account of the same launcher account: same member, account remembered
-    const b = users.authenticate(signLauncherPass(KEY, { ...QUENTIN, mc: ['00000000000000000000000000000001'] }))!;
-    expect(b.id).toBe('popo');
-    expect(users.get('popo')!.minecraft).toHaveLength(2);
-    // someone else, same display name: their own member, not an admin
-    const c = users.authenticate(signLauncherPass(KEY, { sub: 'usr_2', name: 'PoPo', mc: [] }))!;
+    expect(a).toMatchObject({ id: 'popo', name: 'PoPo', role: 'member', launcherId: 'usr_1', minecraft: ['8667ba71b85a4004af54457a9734eed7'] });
+    expect(users.authenticate(signLauncherPass(KEY, QUENTIN))!.id).toBe('popo');
+    // someone else with the same display name: their own member
+    const c = users.authenticate(signLauncherPass(KEY, { sub: 'usr_2', name: 'PoPo', mc: ['00000000000000000000000000000002'] }))!;
     expect(c).toMatchObject({ id: 'popo-2', role: 'member' });
     expect(users.list()).toHaveLength(2);
+  });
+
+  it('declared people: several Minecraft accounts are one member, with its role', () => {
+    const home = tempDir();
+    cleanup.push(home);
+    fs.writeFileSync(path.join(home, 'launcher.key'), KEY.toString('utf8'));
+    const users = new UserStore(home);
+    // an alt account connected before it was declared
+    users.authenticate(signLauncherPass(KEY, { sub: 'usr_9', name: 'PoPoAlt', mc: ['00000000000000000000000000000009'] }));
+    users.seedLauncherMembers([{ name: 'Quentin', role: 'admin', minecraft: ['8667ba71-b85a-4004-af54-457a9734eed7', '00000000000000000000000000000009'] }]);
+    expect(users.authenticate(signLauncherPass(KEY, QUENTIN))).toMatchObject({ id: 'quentin', role: 'admin' });
+    expect(users.authenticate(signLauncherPass(KEY, { sub: 'usr_9', name: 'PoPoAlt', mc: ['00000000000000000000000000000009'] }))).toMatchObject({ id: 'quentin' });
+    // seeding again changes nothing; a bad UUID is refused
+    users.seedLauncherMembers([{ name: 'Quentin', role: 'admin', minecraft: ['8667ba71b85a4004af54457a9734eed7'] }]);
+    expect(users.get('quentin')!.minecraft).toHaveLength(2);
+    expect(() => users.seedLauncherMembers([{ name: 'Deo', minecraft: ['nope'] }])).toThrow(/32 hex/);
   });
 
   it('refuses a forged, expired or foreign pass', () => {
