@@ -126,6 +126,19 @@ restarts) runs each agent turn through an engine, chosen per agent:
   declined. The git safety environment is passed explicitly (`shell_environment_policy.set`), since
   Codex drops variables named like secrets (`GIT_CONFIG_KEY_0`).
 
+  On Windows, the app-server uses `<home>/<profile>/codex-localappdata` as its own local app-data
+  directory. This avoids a Codex sandbox setup bug that tries to repair permissions on locked
+  desktop runtime executables. Agent shell commands retain the original `LOCALAPPDATA`; the
+  sandbox, approval policy, login and saved Codex threads are unchanged.
+
+  Worker Git access includes both the shared Git directory and the exact worktree metadata
+  directory, validated against the registered repository before every turn. Codex otherwise
+  protects the `.git` pointer's target even when its parent directory is writable. On Windows,
+  worktrees run with the older grant may retain Codex deny ACLs; recreating the worktree after
+  saving its changes clears those stale permissions. Do not reset permissions on the whole repo.
+  Windows agents are also told to use `npm.cmd` / `npx.cmd`: their PowerShell launchers can fail
+  on sandbox-inaccessible global installs or script execution policy, while the CMD launchers work.
+
 The rest of this section describes the team with either engine ("Read/Grep/Glob" is how a Codex
 agent reads with its shell).
 

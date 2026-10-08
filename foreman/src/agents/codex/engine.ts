@@ -11,6 +11,7 @@
 //   image generation and notify hooks are off for agent threads (their Codex app is untouched)
 // - commands run with the git safety environment (no push, no hooks, the agent's own identity),
 //   passed explicitly because Codex drops variables named like secrets (GIT_CONFIG_KEY_0...)
+import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { z } from 'zod';
@@ -53,6 +54,7 @@ function notes(role: Role, tools: AgentTool[]): string {
     '# Working in AgentCraft (Codex)',
     `- The AgentCraft team tools (${tools.map((t) => t.name).join(', ')}) are function tools: call them directly. They are how the team and ${userName()} see your work; plain text only shows on your monitor.`,
     '- Where these instructions mention Read, Grep or Glob, read and search files with your shell (e.g. rg). Edit files with apply_patch.',
+    process.platform === 'win32' ? '- In PowerShell, use npm.cmd and npx.cmd for npm/npx commands. Their .ps1 launchers can fail under the Windows sandbox even when the .cmd launchers work.' : '',
     `- Every command is checked against AgentCraft's policy, and anything it cannot allow by itself is shown to ${userName()}, who may deny it. Never work around a denial: find another way or use ask_user.`,
     `- Do not spawn sub-agents, do not search the web, and ask questions only with ask_user (not request_user_input).`,
     role === 'lead' ? '- You are read-only: never modify files or run commands that change anything.' : '',
@@ -62,9 +64,9 @@ function notes(role: Role, tools: AgentTool[]): string {
 }
 
 /** Variables the agent's commands need beyond the user's environment (git safety, identity). */
-function envDelta(env: Record<string, string | undefined>): Record<string, string> {
+function envDelta(env: Record<string, string | undefined>, inherited = process.env): Record<string, string> {
   const out: Record<string, string> = {};
-  for (const [k, v] of Object.entries(env)) if (v !== undefined && process.env[k] !== v) out[k] = v;
+  for (const [k, v] of Object.entries(env)) if (v !== undefined && inherited[k] !== v) out[k] = v;
   return out;
 }
 
@@ -95,6 +97,20 @@ export class CodexEngine implements Engine {
     return this.opts.bin ?? findCodex(this.cfg.path);
   }
 
+  private serverEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+    if (process.platform !== 'win32') return env;
+    // Windows sandbox setup scans LOCALAPPDATA/OpenAI/Codex/runtimes even when MCP is off.
+    // Older Codex builds try to repair ACLs on active desktop EXEs and fail with sharing
+    // violations (openai/codex#51822). Give our server its own app-data root; shell commands
+    // get the original environment back below. The sandbox and the user's Codex home stay intact.
+    const localAppData = path.join(this.fm.config.dataDir, 'codex-localappdata');
+    fs.mkdirSync(localAppData, { recursive: true });
+    const isolated = { ...env };
+    for (const key of Object.keys(isolated)) if (key.toUpperCase() === 'LOCALAPPDATA') delete isolated[key];
+    isolated.LOCALAPPDATA = localAppData;
+    return isolated;
+  }
+
   model(role: Role): string {
     return (role === 'lead' ? this.cfg.leadModel : this.cfg.workerModel) ?? this.configuredModel ?? 'default';
   }
@@ -111,7 +127,7 @@ export class CodexEngine implements Engine {
   async checkAuth(): Promise<AuthCheck> {
     const bin = this.bin();
     if (!bin) return { ok: false, message: CODEX_NOT_FOUND };
-    const server = new AppServer(bin, { cwd: os.homedir(), env: process.env, ...(this.opts.args ? { args: this.opts.args } : {}) });
+    const server = new AppServer(bin, { cwd: os.homedir(), env: this.serverEnv(process.env), ...(this.opts.args ? { args: this.opts.args } : {}) });
     try {
       await this.initialize(server);
       const cfg = await server.request<any>('config/read', {}, 30_000).catch(() => undefined);
@@ -129,7 +145,7 @@ export class CodexEngine implements Engine {
   }
 
   /** Config overrides for an agent thread (see the header). `userConfig`: the effective config. */
-  private threadConfig(userConfig: any, spec: TurnSpec): Record<string, unknown> {
+  private threadConfig(userConfig: any, spec: TurnSpec, serverEnv: NodeJS.ProcessEnv): Record<string, unknown> {
     const off = (names: string[]) => Object.fromEntries(names.map((n) => [n, { enabled: false }]));
     const effort = spec.role === 'lead' ? this.cfg.leadEffort : this.cfg.effort;
     return {
@@ -139,7 +155,9 @@ export class CodexEngine implements Engine {
       web_search: 'disabled',
       notify: [],
       include_apps_instructions: false,
-      shell_environment_policy: { set: envDelta(spec.env) },
+      // Preserve both the git-safety variables Codex normally filters and any values isolated
+      // for the app-server itself (LOCALAPPDATA on Windows).
+      shell_environment_policy: { set: { ...envDelta(spec.env), ...envDelta(spec.env, serverEnv) } },
       sandbox_workspace_write: { writable_roots: spec.writableRoots ?? [], network_access: false },
       ...(effort ? { model_reasoning_effort: effort } : {}),
     };
@@ -150,9 +168,10 @@ export class CodexEngine implements Engine {
     if (!bin) throw new Error(CODEX_NOT_FOUND);
     const { agentId, role, cwd, abort } = spec;
     const mapper = new CodexStreamMapper(this.fm, agentId, cwd, role);
+    const serverEnv = this.serverEnv(spec.env);
     const server = new AppServer(bin, {
       cwd,
-      env: spec.env as NodeJS.ProcessEnv,
+      env: serverEnv,
       ...(this.opts.args ? { args: this.opts.args } : {}),
       onStderr: (s) => this.fm.log.debug(`[${agentId} codex] ${s.trim().slice(0, 300)}`),
     });
@@ -191,7 +210,7 @@ export class CodexEngine implements Engine {
         cwd,
         approvalPolicy: 'untrusted',
         sandbox: role === 'lead' ? 'read-only' : 'workspace-write',
-        config: this.threadConfig(userConfig, spec),
+        config: this.threadConfig(userConfig, spec, serverEnv),
         developerInstructions: spec.instructions + notes(role, spec.tools),
         dynamicTools,
         ...(model ? { model } : {}),

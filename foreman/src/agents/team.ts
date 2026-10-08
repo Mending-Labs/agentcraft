@@ -705,11 +705,16 @@ export class TeamBackend implements Backend {
    * Where a worker may write besides its worktree: the git dir its commits go to, and the temp dir
    * (scratch files and test runs; the policy allows it too).
    */
-  private writableRoots(role: Role, job: Job): string[] {
+  private async writableRoots(role: Role, job: Job): Promise<string[]> {
     if (role !== 'worker' || !job.taskId) return [];
-    const t = this.fm.tasks.get(job.taskId);
-    const repo = t?.repoId ? this.fm.repos.get(t.repoId) : undefined;
-    return [...(repo ? [path.join(repo.path, '.git')] : []), os.tmpdir()];
+    const t = this.fm.tasks.require(job.taskId);
+    const repo = this.fm.repos.require(t.repoId!);
+    const worktree = this.fm.repos.requireWorktree(repo.id, t.worktree!);
+    const verified = await this.fm.repos.verifyWorktreeGit(repo, worktree);
+    if (!verified.ok) throw new Error(`Cannot grant worktree Git access: ${verified.reason}`);
+    // Codex protects the resolved target of a worktree's .git pointer unless that exact
+    // directory is explicitly writable. Granting only its parent common directory is not enough.
+    return [...new Set([verified.commonDir, verified.gitDir, os.tmpdir()])];
   }
 
   private async runJob(job: Job): Promise<void> {
@@ -759,7 +764,7 @@ export class TeamBackend implements Backend {
           instructions: systemAppend,
           ...(resume ? { resume } : {}),
           env: agentEnv(process.env, { agentId, cwd }),
-          writableRoots: this.writableRoots(role, job),
+          writableRoots: await this.writableRoots(role, job),
           abort,
           turn,
           permission: this.permissionGate(agentId, role, cwd, turn),

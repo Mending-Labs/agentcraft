@@ -16,6 +16,7 @@ import readline from 'node:readline';
 const scenario = JSON.parse(fs.readFileSync(process.env.FAKE_CODEX_SCENARIO, 'utf8'));
 const logFile = process.env.FAKE_CODEX_LOG;
 const log = (o) => logFile && fs.appendFileSync(logFile, `${JSON.stringify({ pid: process.pid, ...o })}\n`);
+log({ serverLocalAppData: process.env.LOCALAPPDATA });
 let nextId = 1000;
 const pending = new Map();
 const send = (m) => process.stdout.write(`${JSON.stringify(m)}\n`);
