@@ -154,7 +154,31 @@ public final class ConsoleCommands {
 			// tidying a workspace folder: the lead has its workspace tools whatever the repo
 			return new Goal(text, defaultRepo(s), List.of());
 		}
-		return new Goal(text, defaultRepo(s), repos);
+		return new Goal(text, defaultRepo(s), withWorkspaces(repos, s));
+	}
+
+	/** Chooser entries for workspace folders: id {@value #WORKSPACE_PREFIX}<path>. */
+	public static final String WORKSPACE_PREFIX = "workspace:";
+
+	/** The repo choices with the workspaces first (the chooser drops what does not fit on its row). */
+	private static List<Repo> withWorkspaces(List<Repo> repos, ForemanState s) {
+		List<String> workspaces = s.status() == null ? List.of() : s.status().workspaces();
+		if (workspaces.isEmpty()) {
+			return repos;
+		}
+		List<Repo> out = new ArrayList<>();
+		for (String w : workspaces) {
+			String p = w.replace('\\', '/').replaceAll("/+$", "");
+			String name = p.substring(p.lastIndexOf('/') + 1);
+			out.add(new Repo(WORKSPACE_PREFIX + w, Tr.t("console.workspace_choice", name), w, "", null, false, List.of(), null));
+		}
+		out.addAll(repos);
+		return out;
+	}
+
+	/** A goal sent for a workspace chosen in the chooser: the lead learns which folder it is about. */
+	public static Goal workspaceGoal(String text, Repo workspace, ForemanState s) {
+		return new Goal(text + " (workspace: " + workspace.path() + ")", defaultRepo(s), List.of());
 	}
 
 	/** The goal names a workspace folder (its path or folder name) and no registered repo's path. */

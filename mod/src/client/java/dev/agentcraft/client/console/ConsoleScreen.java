@@ -296,7 +296,8 @@ public class ConsoleScreen extends Screen {
 		if (pendingGoal != null) {
 			List<Repo> choices = pendingGoal.choices();
 			Repo r = choices.get(Math.max(0, Math.min(repoSel, choices.size() - 1)));
-			in = new Goal(pendingGoal.text(), r.id(), List.of());
+			in = r.id().startsWith(ConsoleCommands.WORKSPACE_PREFIX) ? ConsoleCommands.workspaceGoal(pendingGoal.text(), r, s)
+				: new Goal(pendingGoal.text(), r.id(), List.of());
 			pendingGoal = null;
 		} else if (in instanceof Goal g && !g.choices().isEmpty()) {
 			pendingGoal = g;

@@ -267,6 +267,7 @@
   "agentcraft.console.usage_text": "texte",
   "agentcraft.console.waiting": "%s à traiter",
   "agentcraft.console.waiting_foreman": "En attente du Foreman…",
+  "agentcraft.console.workspace_choice": "%s (dossier)",
   "agentcraft.console.worktree_detail": "%1$s fichiers, +%2$s -%3$s",
   "agentcraft.console.you": "Vous",
   "agentcraft.console.you_lower": "vous",

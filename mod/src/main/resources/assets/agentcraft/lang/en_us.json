@@ -267,6 +267,7 @@
   "agentcraft.console.usage_text": "text",
   "agentcraft.console.waiting": "%s waiting",
   "agentcraft.console.waiting_foreman": "Waiting for the Foreman…",
+  "agentcraft.console.workspace_choice": "%s (folder)",
   "agentcraft.console.worktree_detail": "%1$s files, +%2$s -%3$s",
   "agentcraft.console.you": "You",
   "agentcraft.console.you_lower": "you",
