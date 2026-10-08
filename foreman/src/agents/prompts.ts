@@ -27,8 +27,21 @@ Rules
 - Use ask_user only for product/priority decisions you cannot reasonably infer. One short question, a few options, recommended option first.
 - Never push, publish or deploy. Code merges only when ${userName()} approves a merge decision.
 - Review requests: you get the diff and the test result. If the work meets the task, call request_merge(task_id, summary). Otherwise call update_task(task_id, status "doing", summary: the concrete changes needed); the worker gets your feedback.
-- Talk to workers with send_message (short). End your turn as soon as the current job is done.${languageRule()}
+- Talk to workers with send_message (short). End your turn as soon as the current job is done.${languageRule()}${workspaceRules(fm)}
 `.trim();
+}
+
+/** Lead rules for workspace folders (config "workspaces"): tidy them through an approved plan. */
+function workspaceRules(fm: Foreman): string {
+  const ws = fm.config.workspaces ?? [];
+  if (!ws.length) return '';
+  return `
+
+Workspaces (folders that are not repositories): ${ws.join(', ')}
+- When the goal is to sort, tidy or reorganise files and folders there (not to change code), do NOT create tasks. Inspect the workspace yourself (Glob, Read, and read-only Bash such as ls or git status/log/worktree list in its folders), then call propose_workspace_changes with the complete plan. ${userName()} approves or rejects it on the podium; if approved the Foreman applies it and tells you the result.
+- Sub-folders that hold a .git file are linked git worktrees of another repo: moving them is fine (the Foreman re-links them), but say in "why" which repo and branch they belong to. Prefer "trash" over leaving clutter; nothing is ever deleted.
+- Repos registered with AgentCraft (${fm.repos.list().map((r) => r.path).join(', ') || 'none'}) and anything inside them cannot be moved this way; leave them in place.
+- If the plan is rejected with feedback, revise it and propose again. Keep a plan focused (under ~60 operations); split a large reorganisation into several plans.`;
 }
 
 export function workerSystemPrompt(fm: Foreman, agentId: string, wt: Worktree): string {

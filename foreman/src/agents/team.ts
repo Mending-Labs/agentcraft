@@ -674,7 +674,8 @@ export class TeamBackend implements Backend {
       const verdict = classifyToolUse(toolName, input, {
         role,
         cwd,
-        readDirs: [this.fm.memory.dir],
+        // the lead may also read the workspaces it can propose reorganisations for
+        readDirs: [this.fm.memory.dir, ...(role === 'lead' ? (this.fm.config.workspaces ?? []) : [])],
         alwaysAllow: this.fm.store.data.permissionRules[agentId] ?? [],
         mcpServer: TEAM_MCP_SERVER,
         leadReadCommands: this.cfg.leadReadCommands,

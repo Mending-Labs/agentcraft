@@ -314,6 +314,7 @@
   "agentcraft.decisions.offline_read_only": "Foreman hors ligne : lecture seule",
   "agentcraft.decisions.option_allow_once": "Autoriser une fois",
   "agentcraft.decisions.option_always_allow": "Toujours autoriser",
+  "agentcraft.decisions.option_apply": "Appliquer",
   "agentcraft.decisions.option_deny": "Refuser",
   "agentcraft.decisions.option_merge": "Fusionner",
   "agentcraft.decisions.option_reject": "Rejeter",

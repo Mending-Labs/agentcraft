@@ -2,6 +2,7 @@
 // "agentcraft", see claude/tools.ts; Codex: app-server dynamic tools, see codex/engine.ts):
 //   send_message, ask_user, write_memory, read_memory, update_task, report_status, list_tasks
 //   lead only: create_task, request_merge
+//   lead only, with workspaces configured: propose_workspace_changes (see ../workspace.ts)
 // Every tool result carries any unread messages for the agent (so mid-turn messages arrive).
 import { z } from 'zod';
 import { formatInbox } from '../bus.js';
@@ -12,6 +13,8 @@ import { isPrBranch } from '../pulls.js';
 import { truncate } from '../util/text.js';
 import { boardSummary } from './prompts.js';
 import { userName } from '../user.js';
+import path from 'node:path';
+import { applyPlan, checkPlan, describeLinks, describePlan, findWorkspace, TRASH_DIR, WORKSPACE_OPTIONS, type WorkspaceOpInput } from '../workspace.js';
 
 export interface ToolHooks {
   /** worker moved its task to review */
@@ -48,6 +51,8 @@ export interface AgentTool {
 export const TOOL_NAMES = {
   common: ['send_message', 'ask_user', 'write_memory', 'read_memory', 'update_task', 'report_status', 'list_tasks'],
   lead: ['create_task', 'request_merge'],
+  /** lead only, when workspaces are configured */
+  workspace: ['propose_workspace_changes'],
 } as const;
 
 function tool<S extends z.ZodRawShape>(name: string, description: string, shape: S, handler: (args: z.infer<z.ZodObject<S>>) => Promise<ToolResult>): AgentTool {
@@ -80,6 +85,33 @@ export function agentTools(fm: Foreman, agentId: string, role: 'lead' | 'worker'
     return { content: [{ type: 'text', text: text + extra }], ...(isError ? { isError: true } : {}) };
   };
   const fail = (text: string) => withInbox(`Error: ${text}`, true);
+
+  /** Open a decision and wait for the user (the agent walks to the podium meanwhile). */
+  const askUser = async (input: Omit<Parameters<Foreman['createDecision']>[0], 'agentId'>): Promise<Decision | 'stopped'> => {
+    const prev = fm.agent(agentId);
+    // the stream mapper may already show the agent waiting at the user (it saw the tool call):
+    // after the answer the agent goes back to thinking at its own station, not "waiting"
+    const home = role === 'lead' ? 'meeting' : 'desk';
+    const waiting = prev?.state === 'waiting_user' || prev?.station === 'user';
+    const prevState = { state: waiting ? 'thinking' : (prev?.state ?? 'thinking'), station: waiting ? home : (prev?.station ?? home), activity: prev?.activity ?? '' };
+    const d = fm.createDecision({ agentId, ...input, ...(prev?.taskId ? { taskId: prev.taskId } : {}) });
+    fm.setAgent(agentId, { state: 'waiting_user', station: 'user', activity: 'waiting for your answer' });
+    hooks.onWaiting(agentId, true);
+    // If the turn is aborted (stop, pause, task cancelled, timeout) nobody will read the answer:
+    // withdraw the question so it does not sit on the podium forever. A Foreman shutdown keeps
+    // it open on purpose: after the restart the answer resumes the session.
+    const onAbort = () => {
+      if (turn?.reason() !== 'shutdown') fm.decisions.cancel(d.id, `${fm.nameOf(agentId)}'s turn was stopped`);
+    };
+    if (turn?.signal.aborted) onAbort();
+    else turn?.signal.addEventListener('abort', onAbort, { once: true });
+    const done = await fm.decisions.wait(d.id);
+    turn?.signal.removeEventListener('abort', onAbort);
+    hooks.onWaiting(agentId, false);
+    if (turn?.signal.aborted) return 'stopped';
+    fm.setAgent(agentId, { state: prevState.state as AgentState, station: prevState.station, activity: 'got your answer' });
+    return done;
+  };
 
   const tools: AgentTool[] = [
     tool(
@@ -116,28 +148,8 @@ export function agentTools(fm: Foreman, agentId: string, role: 'lead' | 'worker'
         context: z.string().optional().describe('one or two lines of background'),
       },
       async ({ question, options, context }) => {
-        const prev = fm.agent(agentId);
-        // the stream mapper may already show the agent waiting at the user (it saw the tool call):
-        // after the answer the agent goes back to thinking at its own station, not "waiting"
-        const home = role === 'lead' ? 'meeting' : 'desk';
-        const waiting = prev?.state === 'waiting_user' || prev?.station === 'user';
-        const prevState = { state: waiting ? 'thinking' : (prev?.state ?? 'thinking'), station: waiting ? home : (prev?.station ?? home), activity: prev?.activity ?? '' };
-        const d = fm.createDecision({ agentId, kind: 'question', question, options: options ?? [], ...(context ? { context } : {}), ...(prev?.taskId ? { taskId: prev.taskId } : {}) });
-        fm.setAgent(agentId, { state: 'waiting_user', station: 'user', activity: 'waiting for your answer' });
-        hooks.onWaiting(agentId, true);
-        // If the turn is aborted (stop, pause, task cancelled, timeout) nobody will read the answer:
-        // withdraw the question so it does not sit on the podium forever. A Foreman shutdown keeps
-        // it open on purpose: after the restart the answer resumes the session.
-        const onAbort = () => {
-          if (turn?.reason() !== 'shutdown') fm.decisions.cancel(d.id, `${fm.nameOf(agentId)}'s turn was stopped`);
-        };
-        if (turn?.signal.aborted) onAbort();
-        else turn?.signal.addEventListener('abort', onAbort, { once: true });
-        const done = await fm.decisions.wait(d.id);
-        turn?.signal.removeEventListener('abort', onAbort);
-        hooks.onWaiting(agentId, false);
-        if (turn?.signal.aborted) return withInbox(`Your turn was stopped before ${userName()} answered.`, true);
-        fm.setAgent(agentId, { state: prevState.state as AgentState, station: prevState.station, activity: 'got your answer' });
+        const done = await askUser({ kind: 'question', question, options: options ?? [], ...(context ? { context } : {}) });
+        if (done === 'stopped') return withInbox(`Your turn was stopped before ${userName()} answered.`, true);
         if (done.status === 'cancelled') return withInbox('The question was cancelled. Use your best judgement and note the assumption.');
         const ans = [done.answer?.option, done.answer?.text].filter(Boolean).join(' — ');
         return withInbox(`${userName()} answered: ${ans}`);
@@ -304,6 +316,76 @@ export function agentTools(fm: Foreman, agentId: string, role: 'lead' | 'worker'
           });
           hooks.onMergeRequested(t.id, d);
           return withInbox(`Merge decision ${d.id} sent to ${userName()}.`);
+        },
+      ),
+    );
+  }
+
+  const workspaces = fm.config.workspaces ?? [];
+  if (role === 'lead' && workspaces.length) {
+    tools.push(
+      tool(
+        'propose_workspace_changes',
+        `Propose a reorganisation of a workspace folder (${workspaces.join(', ')}) and WAIT for ${userName()}'s approval; ` +
+          `the Foreman applies it if approved. Operations run in order: mkdir (parent must exist), move (destination folder must exist, ` +
+          `the destination itself must not), trash (moved into ${TRASH_DIR}/<date>/, never deleted). Git repos and worktrees that move are ` +
+          're-linked automatically. Paths may be relative to the workspace. Repos registered with AgentCraft cannot be moved or changed.',
+        {
+          workspace: z.string().describe('the workspace folder'),
+          summary: z.string().describe(`2-5 lines for ${userName()}: what the reorganisation achieves`),
+          operations: z
+            .array(
+              z.object({
+                op: z.enum(['mkdir', 'move', 'trash']),
+                path: z.string(),
+                to: z.string().optional().describe('move only: the new path (not the folder to move into)'),
+                why: z.string().optional().describe('a few words'),
+              }),
+            )
+            .min(1)
+            .max(200),
+        },
+        async ({ workspace, summary, operations }) => {
+          const root = findWorkspace(workspaces, workspace);
+          if (!root) return fail(`${workspace} is not a workspace. Workspaces: ${workspaces.join(', ')}`);
+          const protectedPaths = [...fm.repos.list().map((r) => r.path), fm.config.projectRoot, fm.config.home];
+          const { plan, errors } = await checkPlan(root, operations as WorkspaceOpInput[], { protectedPaths, now: new Date(fm.ctx.now()) });
+          if (!plan) return fail(`the plan was not sent to ${userName()}; fix these and call again:\n- ${errors.join('\n- ')}`);
+          const lines = describePlan(plan);
+          const links = describeLinks(plan);
+          const note = fm.memory.write({
+            scope: 'shared',
+            title: `Workspace plan: ${path.basename(root)}`,
+            body: `${summary}\n\nWorkspace: ${root}\n\n${lines.map((l) => `- ${l}`).join('\n')}${links.length ? `\n\nGit links repaired afterwards:\n${links.map((l) => `- ${l}`).join('\n')}` : ''}`,
+            author: agentId,
+            mode: 'replace',
+          });
+          const shown = lines.length > 30 ? [...lines.slice(0, 30), `... ${lines.length - 30} more (full plan: memory ${note.id})`] : lines;
+          const done = await askUser({
+            kind: 'question',
+            question: `Apply this reorganisation of ${root}? (${plan.ops.length} operation${plan.ops.length === 1 ? '' : 's'})`,
+            options: [...WORKSPACE_OPTIONS],
+            context: `${summary}\n\n${shown.join('\n')}${links.length ? `\n\ngit worktree repair: ${links.length} repo(s)` : ''}\nNothing is deleted: trash goes to ${path.relative(root, plan.trashDir)}`,
+          });
+          if (done === 'stopped') return withInbox(`Your turn was stopped before ${userName()} answered: nothing was changed.`, true);
+          if (done.status === 'cancelled') return withInbox('The plan was withdrawn: nothing was changed.');
+          const feedback = done.answer?.text ? ` ${userName()} said: ${done.answer.text}` : '';
+          if (done.answer?.option !== WORKSPACE_OPTIONS[0]) return withInbox(`${userName()} did not approve the plan: nothing was changed.${feedback}`);
+
+          fm.setAgent(agentId, { state: 'running', activity: 'tidying the workspace' });
+          // the disk may have changed while the plan waited on the podium: check it again
+          const again = await checkPlan(root, operations as WorkspaceOpInput[], { protectedPaths, now: new Date(fm.ctx.now()) });
+          if (!again.plan) return fail(`the workspace changed since the plan was approved; nothing was changed:\n- ${again.errors.join('\n- ')}`);
+          const res = await applyPlan(again.plan, path.join(fm.config.dataDir, 'workspace'), { decision: done.id, summary });
+          const repairsFailed = res.repairs.filter((r) => !r.ok);
+          const outcome = res.failed
+            ? `Applied ${res.applied.length} of ${again.plan.ops.length} operations, then stopped: ${describePlan({ ...again.plan, ops: [res.failed.op] })[0]!.replace(/^\d+\. /, '')} failed (${res.failed.error}).`
+            : `Applied all ${res.applied.length} operations.`;
+          const repairs = res.repairs.length ? ` Re-linked ${res.repairs.length - repairsFailed.length}/${res.repairs.length} git repo(s)${repairsFailed.length ? `; repair FAILED for ${repairsFailed.map((r) => `${r.main} (${r.output})`).join(', ')}` : ''}.` : '';
+          fm.bus.feed(res.failed || repairsFailed.length ? 'error' : 'goal', `Workspace ${path.basename(root)}: ${outcome}${repairs}`, { agentId });
+          const goal = fm.currentGoal();
+          if (!res.failed && goal && goal.status !== 'done' && fm.tasks.forGoal(goal.id).length === 0) fm.setGoal(goal.id, { status: 'done', progress: 1 });
+          return withInbox(`${outcome}${repairs} Journal (with the reverse moves): ${res.journal}.${feedback} Tell ${userName()} the result with send_message.`);
         },
       ),
     );

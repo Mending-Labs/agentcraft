@@ -115,6 +115,17 @@ public final class DecisionQueue {
 					return option;
 			}
 		}
+		// the Foreman's workspace plan approval (a question with these two fixed options)
+		if (k == DecisionKind.QUESTION) {
+			switch (option) {
+				case Protocol.APPLY:
+					return Tr.t("decisions.option_apply");
+				case Protocol.REJECT:
+					return Tr.t("decisions.option_reject");
+				default:
+					return option;
+			}
+		}
 		return option;
 	}
 }

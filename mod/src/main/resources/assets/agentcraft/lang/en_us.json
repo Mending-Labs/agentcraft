@@ -314,6 +314,7 @@
   "agentcraft.decisions.offline_read_only": "Foreman offline: read-only",
   "agentcraft.decisions.option_allow_once": "Allow once",
   "agentcraft.decisions.option_always_allow": "Always allow",
+  "agentcraft.decisions.option_apply": "Apply",
   "agentcraft.decisions.option_deny": "Deny",
   "agentcraft.decisions.option_merge": "Merge",
   "agentcraft.decisions.option_reject": "Reject",

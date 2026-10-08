@@ -456,7 +456,9 @@ public final class ConsoleCommands {
 			// French aliases: the buttons are translated, the answer sent stays the English option
 			case "toujours" -> Protocol.ALWAYS_ALLOW;
 			case "autoriser", "oui", "une-fois" -> d.kind() == DecisionKind.PERMISSION ? Protocol.ALLOW_ONCE : null;
-			case "non", "refuser" -> d.kind() == DecisionKind.PERMISSION ? Protocol.DENY : null;
+			// a workspace plan is a question with Apply / Reject (opts.contains below keeps it to those)
+			case "non", "refuser" -> d.kind() == DecisionKind.PERMISSION ? Protocol.DENY : d.kind() == DecisionKind.QUESTION ? Protocol.REJECT : null;
+			case "appliquer", "apply" -> Protocol.APPLY;
 			case "modifications", "modifs", "modifier" -> Protocol.REQUEST_CHANGES;
 			case "fusionner" -> Protocol.MERGE;
 			case "rejeter" -> Protocol.REJECT;

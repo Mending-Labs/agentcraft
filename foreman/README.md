@@ -84,6 +84,7 @@ most ~100 ms of state, and interrupted agent turns resume on the next start.
 | `--user-name` / `AGENTCRAFT_USER_NAME` / config `userName` | OS user name | how the agents address you; sent to the mod in `foreman.status` |
 | `--profile` | backend name | state lives in `<home>/<profile>` |
 | `--repo <path>[,<path>]` | | register repos at start (sim: a fresh `sandbox/sim-demo`) |
+| `--workspace <dir>[,<dir>]` / config `workspaces` | | folders that are not repos, which the lead may reorganise through a plan you approve (see Workspaces) |
 | `--goal "<text>"` | | submit a goal right away |
 | `--reset` | | wipe this profile first |
 | `--notify` / `--no-notify` / `AGENTCRAFT_NOTIFY` | on for claude, off for sim | Windows, macOS or Linux (`notify-send`) notifications |
@@ -268,6 +269,26 @@ commit, branch, merge) is unaffected, and the Foreman's own git calls do not use
 This is not a sandbox: code an agent runs could drop the variables on purpose (a script that
 spawns git with an empty environment); the policy refuses every command it can see doing that
 (`unset GIT_...`, `env -i`, `GIT_ALLOW_PROTOCOL=...`).
+
+## Workspaces (src/workspace.ts)
+
+A workspace is a folder that is not a repository, e.g. the directory that holds all your repos and
+their worktrees. With `"workspaces": ["D:/Work"]` in `config.json` the lead may read it, and a goal
+such as "tidy D:/Work" is handled without tasks or worktrees:
+
+1. The lead inspects the folder (read-only) and calls `propose_workspace_changes` with an ordered
+   plan of `mkdir`, `move` and `trash` operations.
+2. The Foreman checks it against the disk: every path inside the workspace, no `.git` entry, no
+   registered repo (nor a folder around one), not the AgentCraft checkout or its state; each step
+   replayed on top of the previous ones (a move needs its destination folder, never overwrites).
+   Errors go back to the lead, nothing reaches you.
+3. The plan reaches the podium as a question with **Apply** / **Reject** (full plan in the memory
+   library). Reject with a comment and the lead revises it.
+4. On **Apply** the Foreman checks it again and runs it in order, stopping at the first failure.
+   `trash` moves into `<workspace>/_corbeille-agentcraft/<date>/`: nothing is ever deleted. Git
+   repositories and linked worktrees that moved are re-linked with `git worktree repair` (a plain
+   move breaks the link between a repo and its worktrees). A journal with the reverse moves is
+   written to `<profile>/workspace/`.
 
 ## Safety guarantees (src/repos.ts)
 

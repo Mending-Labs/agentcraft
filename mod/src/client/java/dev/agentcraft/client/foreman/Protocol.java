@@ -109,6 +109,8 @@ public final class Protocol {
 	public static final String ALLOW_ONCE = "Allow once";
 	public static final String ALWAYS_ALLOW = "Always allow for this agent";
 	public static final String DENY = "Deny";
+	/** workspace plan approval (a question; Reject is shared with merges) */
+	public static final String APPLY = "Apply";
 
 	// ------------------------------------------------------------------ entities
 

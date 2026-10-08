@@ -2,6 +2,7 @@
 // that builds such a team from flags.
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { Options, SDKMessage } from '@anthropic-ai/claude-agent-sdk';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { ClaudeEngine } from '../src/agents/claude/engine.js';
@@ -10,7 +11,8 @@ import { TeamBackend } from '../src/agents/team.js';
 import { loadConfig } from '../src/config.js';
 import { demoRepo, makeForeman, rmrf, tempDir, until, type Harness } from './helpers.js';
 
-const FAKE = path.join(path.dirname(new URL(import.meta.url).pathname.replace(/^\/(\w:)/, '$1')), 'fixtures', 'fake-codex.mjs');
+// fileURLToPath, not URL.pathname: the pathname keeps %20 for a space in the checkout path
+const FAKE = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'fake-codex.mjs');
 type ToolServer = { instance: { _registeredTools: Record<string, { handler: (a: unknown, e: unknown) => Promise<{ content: Array<{ text: string }> }> }> } };
 const callTool = async (o: Options, name: string, args: Record<string, unknown>) =>
   (await (o.mcpServers!.agentcraft as unknown as ToolServer).instance._registeredTools[name]!.handler(args, {})).content.map((c) => c.text).join('\n');

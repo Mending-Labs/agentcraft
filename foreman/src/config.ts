@@ -86,6 +86,11 @@ export interface Config {
   host: string;
   port: number;
   repos: string[];
+  /**
+   * folders that are not repositories (e.g. a directory holding many repos) the lead may read and
+   * reorganise through a plan the user approves (see workspace.ts)
+   */
+  workspaces: string[];
   goal?: string;
   autostart: boolean;
   reset: boolean;
@@ -207,7 +212,7 @@ export const KNOWN_FLAGS = new Set([
   'lead-model', 'worker-model', 'effort', 'lead-effort', 'max-turns', 'max-turns-lead', 'max-turns-worker',
   'max-concurrent', 'ci', 'max-budget', 'resume', 'lead-review', 'speed', 'seed', 'showcase', 'auto-answer',
   'ambient', 'lead-read-commands', 'lead-engine', 'worker-engine', 'engines', 'codex-path', 'codex-model', 'codex-lead-model',
-  'codex-worker-model', 'codex-effort', 'codex-lead-effort',
+  'codex-worker-model', 'codex-effort', 'codex-lead-effort', 'workspace',
 ]);
 
 function engineName(v: unknown, d: EngineName, what: string): EngineName {
@@ -262,6 +267,8 @@ export function loadConfig(argv: string[], env: NodeJS.ProcessEnv = process.env)
   const repos: string[] = [];
   if (typeof repoFlag === 'string') repos.push(...repoFlag.split(',').map((s) => s.trim()).filter(Boolean));
   else if (Array.isArray(file.repos)) repos.push(...(file.repos as string[]));
+  const workspaceFlag = flags.workspace;
+  const workspaces = (typeof workspaceFlag === 'string' ? list(workspaceFlag) : Array.isArray(file.workspaces) ? (file.workspaces as string[]) : []).map((p) => path.resolve(p));
 
   const workersRaw = str(flags.workers) ?? env.AGENTCRAFT_WORKERS ?? (fileClaude.workers as string[] | string | undefined);
   const workers = Array.isArray(workersRaw)
@@ -282,6 +289,7 @@ export function loadConfig(argv: string[], env: NodeJS.ProcessEnv = process.env)
     host: '127.0.0.1',
     port: num(pick('port', 'AGENTCRAFT_PORT'), 7878),
     repos,
+    workspaces,
     goal: str(flags.goal),
     autostart: bool(flags.autostart, false) || !!str(flags.goal),
     reset: bool(flags.reset, false),
@@ -342,6 +350,8 @@ usage: npm run start -- [options]
 
   --backend sim|claude|codex  agent backend (default: claude; codex = an all-Codex team)
   --repo <path>[,<path>]   register local git repo(s) at start (sim: defaults to a fresh sandbox/sim-demo)
+  --workspace <dir>[,<dir>] folders that are not repos (config.json "workspaces"): the lead may read them
+                           and propose a reorganisation you approve (mkdir / move / trash; git worktrees re-linked)
   --goal "<text>"          submit a goal right away
   --port <n>               WebSocket port (default 7878, env AGENTCRAFT_PORT)
   --home <dir>             state root (default ~/.agentcraft, env AGENTCRAFT_HOME)
