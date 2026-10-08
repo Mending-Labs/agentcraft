@@ -8,22 +8,26 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.Locale;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
-import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import net.minecraft.server.MinecraftServer;
 
 /**
  * A dedicated HQ server run by MineOps: MineOps puts a server in its Velocity proxy (so players reach
  * it with {@code /server <name>}) once the server publishes its state in
  * {@code .mineops/game-state.properties}, which its Paper plugin does for Paper servers. This writes
- * the same file for a Fabric server: every 10 s while running, CLOSING when stopping.
+ * the same file for a Fabric server: every 10 s while running, CLOSING when stopping. It is written
+ * from a timer of its own, not from server ticks: an empty server pauses its ticks after a minute
+ * (pause-when-empty-seconds), and MineOps drops a server whose state is older than 90 s.
  *
  * <p>Off unless {@code AGENTCRAFT_MINEOPS_STATE=1} (env or {@code -Dagentcraft.mineops.state=1}),
  * and never in singleplayer.
  */
 public final class MineOpsState {
 	static final String FILE = ".mineops/game-state.properties";
-	private static final int EVERY_TICKS = 200;
-	private static int ticks;
+	private static final long EVERY_SECONDS = 10;
+	private static ScheduledExecutorService timer;
 
 	private MineOpsState() {
 	}
@@ -32,15 +36,33 @@ public final class MineOpsState {
 		if (!enabled()) {
 			return;
 		}
-		ServerTickEvents.END_SERVER_TICK.register(server -> {
-			if (server.isDedicatedServer() && ++ticks % EVERY_TICKS == 1) {
-				write(server, null);
+		ServerLifecycleEvents.SERVER_STARTED.register(server -> {
+			if (!server.isDedicatedServer()) {
+				return;
 			}
+			timer = Executors.newSingleThreadScheduledExecutor(r -> {
+				Thread t = new Thread(r, "AgentCraft-MineOpsState");
+				t.setDaemon(true);
+				return t;
+			});
+			// player count and tick time are read off-thread: a slightly stale value is fine here
+			timer.scheduleAtFixedRate(() -> {
+				try {
+					write(server, null);
+				} catch (RuntimeException e) {
+					AgentCraft.LOGGER.warn("Could not publish the MineOps state", e); // an exception would cancel the timer
+				}
+			}, 0, EVERY_SECONDS, TimeUnit.SECONDS);
 		});
 		ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
-			if (server.isDedicatedServer()) {
-				write(server, "CLOSING");
+			if (!server.isDedicatedServer()) {
+				return;
 			}
+			if (timer != null) {
+				timer.shutdownNow();
+				timer = null;
+			}
+			write(server, "CLOSING");
 		});
 	}
 
@@ -66,7 +88,7 @@ public final class MineOpsState {
 			+ "status=" + s + "\n";
 	}
 
-	private static void write(MinecraftServer server, String status) {
+	private static synchronized void write(MinecraftServer server, String status) {
 		Path file = server.getServerDirectory().resolve(FILE);
 		try {
 			Files.createDirectories(file.getParent());
