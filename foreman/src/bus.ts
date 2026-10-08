@@ -3,7 +3,7 @@ import type { Ctx } from './context.js';
 import type { FeedItem, FeedKind } from './protocol.js';
 import type { BusMessage } from './store.js';
 import { truncate } from './util/text.js';
-import { userName } from './user.js';
+import { currentActor, userName } from './user.js';
 
 export class MessageBus {
   private listeners: Array<(m: BusMessage) => void> = [];
@@ -27,13 +27,15 @@ export class MessageBus {
    */
   send(from: string, to: string, text: string): BusMessage {
     const msg: BusMessage = { id: this.ctx.store.nextId('m'), ts: this.ctx.now(), from, to, text, readBy: [] };
+    const by = from === 'user' ? currentActor()?.name : undefined;
+    if (by) msg.by = by;
     this.ctx.store.pushMessage(msg);
     if (from !== 'user') {
       const say = { type: 'agent.say' as const, agentId: from, text: truncate(text, 600), ts: msg.ts, ...(to ? { to } : {}) };
       this.ctx.emit(say);
       this.feed('message', text, { agentId: from, to });
     } else {
-      this.feed('user', text, { to });
+      this.feed('user', by ? `${by}: ${text}` : text, { to });
     }
     for (const l of this.listeners) l(msg);
     return msg;
@@ -81,6 +83,6 @@ export class MessageBus {
 /** Format inbox messages for injection into an agent prompt / tool result. */
 export function formatInbox(msgs: BusMessage[], nameOf: (id: string) => string): string {
   return msgs
-    .map((m) => `- from ${m.from === 'user' ? `the user (${userName()})` : nameOf(m.from)}${m.to === 'all' ? ' to everyone' : ''}: ${m.text}`)
+    .map((m) => `- from ${m.from === 'user' ? (m.by ? `${m.by} (team member)` : `the user (${userName()})`) : nameOf(m.from)}${m.to === 'all' ? ' to everyone' : ''}: ${m.text}`)
     .join('\n');
 }

@@ -2,6 +2,7 @@
 // the SDK's local spawn) so its pid is known and a stopped turn's whole process tree can be ended.
 import { spawn } from 'node:child_process';
 import { query, type CanUseTool, type Options } from '@anthropic-ai/claude-agent-sdk';
+import { accountProblem } from '../../accounts.js';
 import type { ClaudeConfig } from '../../config.js';
 import type { Foreman } from '../../foreman.js';
 import type { AuthCheck, Engine, Role, TurnSpec, TurnStats } from '../engine.js';
@@ -61,6 +62,11 @@ export class ClaudeEngine implements Engine {
 
   async runTurn(spec: TurnSpec): Promise<TurnStats> {
     const { agentId, role, cwd, abort } = spec;
+    // a member's goal runs on that member's own subscription, never on someone else's
+    const problem = accountProblem(spec.account, 'claude');
+    if (problem) throw new Error(problem);
+    const token = spec.account?.claudeToken;
+    const env = token ? { ...withAuthMode(spec.env, true), CLAUDE_CODE_OAUTH_TOKEN: token } : withAuthMode(spec.env, this.cfg.useClaudeLogin);
     const canUseTool: CanUseTool = async (toolName, input, opts) => {
       const r = await spec.permission(toolName, input, opts.signal, opts.title);
       return r.allow ? { behavior: 'allow', updatedInput: input } : { behavior: 'deny', message: r.message, ...(r.interrupt ? { interrupt: true } : {}) };
@@ -91,7 +97,7 @@ export class ClaudeEngine implements Engine {
       },
       systemPrompt: { type: 'preset', preset: 'claude_code', append: spec.instructions },
       abortController: abort,
-      env: withAuthMode(spec.env, this.cfg.useClaudeLogin),
+      env,
       spawnClaudeCodeProcess: (o) => {
         const child = spawn(o.command, o.args, { cwd: o.cwd, env: o.env as NodeJS.ProcessEnv, stdio: ['pipe', 'pipe', 'pipe'], signal: o.signal, windowsHide: true });
         child.stderr?.setEncoding('utf8');

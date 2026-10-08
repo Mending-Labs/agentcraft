@@ -31,7 +31,9 @@ import { git } from './util/git.js';
 import { RepoError, RepoManager } from './repos.js';
 import { Store } from './store.js';
 import { TaskError, TaskGraph } from './taskgraph.js';
-import { setUserName, userName } from './user.js';
+import { currentActor, ownerName, setUserName, userName } from './user.js';
+import { actorOf, UserStore, type Actor } from './users.js';
+import { ACCOUNT_SECRET_PREFIX, AccountError, Accounts, type TurnAccount } from './accounts.js';
 import type { AutoConfig, AutoKind } from './auto.js';
 import { dirsInText, workspaceRefusal } from './workspace.js';
 import { McpCatalog } from './mcp.js';
@@ -93,6 +95,12 @@ export class Foreman {
   readonly mcp: McpCatalog;
   /** secrets typed in game (/secret set), encrypted at rest (DPAPI / keychain), decrypted in memory only */
   readonly secrets: SecretVault;
+  /** a shared Foreman's members (users.json; none: single-user) */
+  readonly users: UserStore;
+  /** the members' own AI subscriptions (/compte) */
+  readonly accounts: Accounts;
+  /** members with a client connected (the server reports it) */
+  private onlineIds = new Set<string>();
 
   private listeners = new Set<(m: Outbound) => void>();
   private logBuffers = new Map<string, LogEntry[]>();
@@ -121,16 +129,19 @@ export class Foreman {
     this.cast = cast;
     this.log.debug(`cast from ${source}`);
     setUserName(opts.config.userName);
-    this.status = { version: FOREMAN_VERSION, backend: opts.config.backend, auth: opts.config.backend === 'sim' ? 'ok' : 'unknown', userName: userName() };
+    this.status = { version: FOREMAN_VERSION, backend: opts.config.backend, auth: opts.config.backend === 'sim' ? 'ok' : 'unknown', userName: ownerName() };
     const ws = this.workspaces();
     if (ws.length) this.status.workspaces = ws;
     this.auto = { ...opts.config.auto };
     this.status.auto = this.auto.enabled;
     this.secrets = new SecretVault(opts.config.home);
+    this.users = new UserStore(opts.config.home);
+    this.accounts = new Accounts(opts.config.home, this.secrets, this.users, ownerName);
     this.mcp = new McpCatalog(opts.config.mcp ?? {}, this.log, fetch, (n) => this.secrets.get(n), () => this.secrets.names());
     const secretNames = this.secrets.names();
     if (secretNames.length) this.status.secrets = secretNames;
     if (opts.config.backend === 'sim') this.status.message = 'Simulated team (sim backend)';
+    this.refreshMembers(false);
     this.initRoster();
     this.decisions.onCreated((d, input) => this.onDecisionCreated(d, input));
   }
@@ -214,6 +225,43 @@ export class Foreman {
   nameOf(id: string): string {
     if (id === 'user') return `${userName()}`;
     return this.agent(id)?.name ?? id;
+  }
+
+  // ---- members (shared Foreman) ------------------------------------------------------------
+
+  /** The member sending the message being handled. */
+  private requireMember(): Actor {
+    const a = currentActor();
+    if (!a) throw new ClientError('AI subscriptions are per member: this Foreman has no members (npm start -- user add <name>)');
+    return a;
+  }
+
+  /** The member who set a goal (their name in prompts, their subscription for its turns). */
+  goalActor(goalId: string | undefined): Actor | undefined {
+    const by = goalId ? this.goal(goalId)?.by : undefined;
+    const m = by ? this.users.get(by) : undefined;
+    return m ? actorOf(m) : undefined;
+  }
+
+  /** The subscription a goal's turns run on (undefined: the Foreman's own login). */
+  goalAccount(goalId: string | undefined): TurnAccount | undefined {
+    const by = goalId ? this.goal(goalId)?.by : undefined;
+    return this.accounts.forMember(by);
+  }
+
+  /** The server reports who is connected. */
+  setOnline(ids: string[]): void {
+    this.onlineIds = new Set(ids);
+    this.refreshMembers();
+  }
+
+  /** Members, presence and linked subscriptions in foreman.status. */
+  refreshMembers(broadcast = true): void {
+    const users = this.users.list();
+    if (!users.length) return;
+    const members = users.map((u) => ({ name: u.name, role: u.role, online: this.onlineIds.has(u.id), accounts: this.accounts.linked(u.id) }));
+    if (broadcast) this.setStatus({ members });
+    else this.status.members = members;
   }
 
   /** Patch an agent and broadcast if anything changed. */
@@ -309,10 +357,12 @@ export class Foreman {
     const now = this.ctx.now();
     const goal: Goal = { id: this.store.nextId('g'), text: text.trim(), progress: 0, status: 'planning', createdAt: now, updatedAt: now };
     if (repoId) goal.repoId = repoId;
+    const by = currentActor()?.name;
+    if (by) goal.by = by;
     this.store.data.goals.push(goal);
     this.store.markDirty();
     this.emit({ type: 'goal.upsert', goal: { ...goal } });
-    this.bus.feed('goal', `New goal: ${goal.text}`, { agentId: 'user' });
+    this.bus.feed('goal', `New goal${by ? ` from ${by}` : ''}: ${goal.text}`, { agentId: 'user' });
     return goal;
   }
 
@@ -462,6 +512,8 @@ export class Foreman {
     let d: Decision;
     try {
       d = this.decisions.answer(id, option, text);
+      const by = opts.auto ? undefined : currentActor()?.name;
+      if (by && d.answer) d.answer.by = by;
     } catch (e) {
       if (e instanceof DecisionError) throw new ClientError(e.message);
       throw e;
@@ -659,6 +711,7 @@ export class Foreman {
       repos: this.repos.list().map((r) => ({ ...r, worktrees: r.worktrees.map((w) => ({ ...w })) })),
       memory: this.memory.list(),
       ...(goal ? { goal: { ...goal } } : {}),
+      ...(currentActor() ? { you: { name: currentActor()!.name, role: currentActor()!.role } } : {}),
       goals: this.goals().map((g) => ({ ...g })),
       feed: this.store.data.feed.slice(-200),
       logs: this.agents().map((a) => ({ agentId: a.id, entries: this.store.logTail(a.id).slice(-60) })),
@@ -722,6 +775,7 @@ export class Foreman {
         return { path: this.addWorkspace(msg.path) };
       case 'secret.set': {
         // the value is never logged, echoed or put in the feed: only the name
+        if (msg.name.toUpperCase().startsWith(ACCOUNT_SECRET_PREFIX)) throw new ClientError('names starting with ACCOUNT_ are reserved (AI subscriptions: /compte)');
         try {
           await this.secrets.set(msg.name, msg.value);
         } catch (e) {
@@ -735,10 +789,30 @@ export class Foreman {
         return { name: msg.name };
       }
       case 'secret.delete': {
+        if (msg.name.toUpperCase().startsWith(ACCOUNT_SECRET_PREFIX)) throw new ClientError('names starting with ACCOUNT_ are reserved (AI subscriptions: /compte)');
         const removed = await this.secrets.delete(msg.name);
         this.setStatus({ secrets: this.secrets.names() });
         if (removed) this.bus.feed('system', `Secret ${msg.name} deleted`);
         return { name: msg.name, removed };
+      }
+      case 'account.set': {
+        const me = this.requireMember();
+        try {
+          await this.accounts.set(me.id, msg.engine, msg.value);
+        } catch (e) {
+          if (e instanceof AccountError || e instanceof SecretError) throw new ClientError(e.message);
+          throw e;
+        }
+        this.refreshMembers();
+        this.bus.feed('system', `${me.name} linked their ${msg.engine === 'claude' ? 'Claude' : 'Codex'} subscription`);
+        return { engine: msg.engine };
+      }
+      case 'account.delete': {
+        const me = this.requireMember();
+        const removed = await this.accounts.delete(me.id, msg.engine);
+        this.refreshMembers();
+        if (removed) this.bus.feed('system', `${me.name} unlinked their ${msg.engine === 'claude' ? 'Claude' : 'Codex'} subscription`);
+        return { engine: msg.engine, removed };
       }
       case 'auto.set':
         this.setAuto(msg.enabled);
@@ -756,6 +830,13 @@ export class Foreman {
     if (repoId && !repo) throw new ClientError(`no repo "${repoId}"`);
     if (!repo) throw new ClientError('no repo connected yet — add one with /repo add <path>');
     if (!this.backend) throw new ClientError('no backend running');
+    if (this.config.backend !== 'sim') {
+      const engines = [this.config.engines.lead, this.config.engines.worker, ...Object.values(this.config.engines.byAgent)];
+      const missing = this.accounts.missing(currentActor()?.name, engines);
+      if (missing.length) {
+        throw new ClientError(`link your own ${missing.map((e) => (e === 'claude' ? 'Claude' : 'Codex')).join(' and ')} subscription first (/compte ${missing[0]}): the team works on your goals with your subscription`);
+      }
+    }
     this.workspacesFromGoal(text);
     const goal = this.createGoal(text, repo.id);
     await this.backend.submitGoal(goal);
@@ -835,6 +916,7 @@ export class Foreman {
     this.backend = backend;
     // decrypt the stored secrets into memory, then learn which tools of the MCP servers only read
     const locked = await this.secrets.unlock();
+    this.refreshMembers();
     if (locked.length) this.log.warn(`could not decrypt the secrets ${locked.join(", ")} (stored by another Windows account or machine?): set them again with /secret set`);
     void this.mcp.load();
     for (const p of this.config.repos) {

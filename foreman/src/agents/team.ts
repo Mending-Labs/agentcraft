@@ -42,7 +42,7 @@ import { fetchPulls, githubOrigin, prRefs, pullBriefs, type PullRequest } from '
 import type { Engine, EngineId, PermissionGate, Role, TurnStats } from './engine.js';
 import { agentTools, type ToolHooks, type TurnHandle } from './tools.js';
 import { modelLabel } from './models.js';
-import { userName } from '../user.js';
+import { runAs, userName } from '../user.js';
 
 // policy: our own team tools are trusted (the Claude engine exposes them as this MCP server)
 const TEAM_MCP_SERVER = 'agentcraft';
@@ -299,6 +299,12 @@ export class TeamBackend implements Backend {
     for (const engine of engines) {
       const r = await engine.checkAuth().catch((e: Error): { ok: false; message: string } => ({ ok: false, message: `${engine.label} check failed: ${e.message}` }));
       if (!r.ok) {
+        // a shared Foreman: members run on their own subscriptions; the host's login is optional
+        if (this.fm.users.enabled) {
+          this.fm.log.warn(`${engine.id}: no login for the host account (${r.message}); members use their own subscriptions (/compte)`);
+          accounts.push(`${engine.label}: per member`);
+          continue;
+        }
         this.markAuthFailed(r.message);
         return false;
       }
@@ -648,7 +654,7 @@ export class TeamBackend implements Backend {
     if (!q?.length) return;
     if (agentId !== LEAD && this.workersRunning() >= this.cfg.maxConcurrent) return;
     const job = q.shift()!;
-    const p = this.runJob(job).finally(() => {
+    const p = runAs(this.fm.goalActor(this.goalOf(job)), () => this.runJob(job)).finally(() => {
       this.turnPromises.delete(p);
     });
     this.turnPromises.add(p);
@@ -803,6 +809,11 @@ export class TeamBackend implements Backend {
     return [...new Set(roots)];
   }
 
+  /** The goal a job serves (its own, else its task's). */
+  private goalOf(job: Job): string | undefined {
+    return job.goalId ?? (job.taskId ? this.fm.tasks.get(job.taskId)?.goalId : undefined);
+  }
+
   private async runJob(job: Job): Promise<void> {
     const agentId = job.agentId;
     const abort = new AbortController();
@@ -813,6 +824,13 @@ export class TeamBackend implements Backend {
     this.running.set(agentId, entry);
     let stats: TurnStats | undefined;
     let cwd = '';
+    // shared Foreman: the subscription of the member who set the goal
+    const account = this.fm.goalAccount(this.goalOf(job));
+    // a member's own login failing stops their goals only, not the whole team
+    const authFailed = (message: string) => {
+      if (!account || account.ownLogin) this.markAuthFailed(message);
+      else this.fm.bus.feed('error', `${account.name}: ${message}`, { agentId });
+    };
     try {
       // a paused/stopped turn of this agent may still be winding down: never run two CLIs on one
       // agent (they could share a session)
@@ -849,6 +867,7 @@ export class TeamBackend implements Backend {
           prompt,
           instructions: systemAppend,
           ...(resume ? { resume } : {}),
+          ...(account ? { account } : {}),
           // no MCP token variables: an agent that could read a token could bypass its access
           env: agentEnv(this.fm.mcp.scrub(process.env), { agentId, cwd }),
           writableRoots: await this.writableRoots(role, job),
@@ -875,14 +894,15 @@ export class TeamBackend implements Backend {
         clearTimeout(timer);
       }
       if (stats.sessionId) this.recordSession(job.sessionKey, stats.sessionId, model, engine.id, stats);
-      if (stats.authFailed) this.markAuthFailed(engine.authFailedMessage(stats.authFailed));
+      if (stats.authFailed) authFailed(engine.authFailedMessage(stats.authFailed));
     } catch (e) {
       const aborted = abort.signal.aborted;
       if (!aborted) {
         const msg = (e as Error).message ?? String(e);
         this.fm.log.error(`${agentId} ${job.kind} failed: ${msg}`);
         this.fm.agentLog(agentId, 'error', `session error: ${truncate(msg, 400)}`);
-        if (/auth|login|credential|401/i.test(msg)) this.markAuthFailed(this.engineFor(agentId).authFailedMessage(truncate(msg, 160)));
+        if (/has not linked a .* subscription/.test(msg)) this.fm.bus.feed('error', msg, { agentId });
+        else if (/auth|login|credential|401/i.test(msg)) authFailed(this.engineFor(agentId).authFailedMessage(truncate(msg, 160)));
         stats = { isError: true, errors: [msg] };
       }
     } finally {

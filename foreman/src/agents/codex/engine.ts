@@ -17,6 +17,7 @@ import path from 'node:path';
 import { z } from 'zod';
 import type { CodexConfig } from '../../config.js';
 import type { Foreman } from '../../foreman.js';
+import { accountProblem } from '../../accounts.js';
 import { truncate } from '../../util/text.js';
 import { userName } from '../../user.js';
 import type { AuthCheck, Engine, Role, TurnSpec, TurnStats } from '../engine.js';
@@ -202,7 +203,11 @@ export class CodexEngine implements Engine {
     const mapper = new CodexStreamMapper(this.fm, agentId, cwd, role);
     // the app-server reads the MCP tokens (bearer_token_env_var) from its own environment; its
     // shells never get them (shell_environment_policy.exclude below)
+    const problem = accountProblem(spec.account, 'codex');
+    if (problem) throw new Error(problem);
     const serverEnv = { ...this.serverEnv(spec.env), ...this.mcpTokens(spec.role) };
+    // a member's goal runs on that member's own ChatGPT login (their own Codex home)
+    if (spec.account?.codexHome) serverEnv.CODEX_HOME = spec.account.codexHome;
     const server = new AppServer(bin, {
       cwd,
       env: serverEnv,

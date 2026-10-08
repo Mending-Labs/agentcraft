@@ -3,6 +3,7 @@
 // merges, steering, restarts - is the team's (team.ts) and the same for every engine, so a team
 // can mix them (e.g. a Claude lead with Codex workers).
 import type { ChildProcess } from 'node:child_process';
+import type { TurnAccount } from '../accounts.js';
 import type { AgentTool, TurnHandle } from './tools.js';
 
 export type EngineId = 'claude' | 'codex';
@@ -43,6 +44,8 @@ export interface TurnSpec {
   instructions: string;
   /** the engine session to continue (from TurnStats.sessionId), if any */
   resume?: string;
+  /** shared Foreman: the subscription of the member whose goal this is (undefined: the Foreman's own login) */
+  account?: TurnAccount;
   /** environment for the agent's process and every command it runs (git safety, identity) */
   env: Record<string, string | undefined>;
   /** directories the agent may write besides cwd (a worktree's git dir, for commits) */

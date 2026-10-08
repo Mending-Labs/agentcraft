@@ -111,6 +111,7 @@ Exact option labels: merge decisions use `Merge`, `Request changes`, `Reject`; p
 | `option` | string | no | the chosen option label (one of Decision.options) |
 | `text` | string | no | free-text answer / feedback |
 | `ts` | integer | yes | epoch milliseconds |
+| `by` | string | no | shared Foreman: the member who answered (absent: auto mode or the single user) |
 
 ### <a id="repo"></a>Repo
 
@@ -164,6 +165,7 @@ Exact option labels: merge decisions use `Merge`, `Request changes`, `Reject`; p
 | `progress` | number | yes |  |
 | `status` | `planning` \| `active` \| `done` \| `failed` \| `cancelled` | yes | planning (lead is planning) -> active -> done (every non-cancelled task merged/done); cancelled: every task was cancelled or rejected (back to active if the lead adds a task); failed: planning failed |
 | `repoId` | string | no |  |
+| `by` | string | no | shared Foreman: the member who set the goal; the agents work on it with that member's AI subscription |
 | `createdAt` | integer | yes | epoch milliseconds |
 | `updatedAt` | integer | yes | epoch milliseconds |
 
@@ -192,6 +194,7 @@ Exact option labels: merge decisions use `Merge`, `Request changes`, `Reject`; p
 | `userName` | string | no | the person the team works for, as the agents address them (UI: "<name> answered") |
 | `workspaces` | string[] | no | folders that are not repos the lead may reorganise (config `workspaces`); a goal that names one needs no repo choice |
 | `secrets` | string[] | no | names of the secrets in the vault (/secret set); never their values |
+| `members` | { name: string, role: `admin` \| `member` \| `viewer`, online: boolean, accounts: `claude` \| `codex`[] }[] | no | shared Foreman: the team members, who is connected, and which AI subscriptions each linked |
 | `auto` | boolean | no | auto mode is on: permissions (except risky ones), lead-approved merges with passing tests, workspace plans and questions are answered without the user |
 
 ### <a id="agentlogs"></a>AgentLogs
@@ -252,6 +255,7 @@ Full state. Sent in reply to every `hello`; the mod rebuilds its view from it.
 | `goals` | [Goal](#goal)[] | yes | all goals, oldest first |
 | `feed` | [FeedItem](#feeditem)[] | yes | most recent feed items, oldest first (<= 200) |
 | `logs` | [AgentLogs](#agentlogs)[] | yes | recent log tail per agent (<= 60 entries each) |
+| `you` | { name: string, role: `admin` \| `member` \| `viewer` } | no | shared Foreman: who this client is signed in as |
 
 ```json
 {
@@ -1069,6 +1073,44 @@ Store a secret (console: `/secret set NAME`, a masked field): encrypted for the 
   "id": "c21",
   "name": "SEED_MCP_TOKEN",
   "value": "(the token)"
+}
+```
+
+### `account.set`
+
+Link the sender's own AI subscription (console: `/compte claude|codex`, a masked field): the goals they set run on it. Encrypted in the vault, never sent back.
+
+| field | type | required | notes |
+| --- | --- | --- | --- |
+| `id` | string | no | client correlation id; the Foreman answers with `ack` {re: id} |
+| `engine` | `claude` \| `codex` | yes |  |
+| `value` | string | yes | claude: the token from `claude setup-token`; codex: the content of ~/.codex/auth.json after `codex login` |
+
+```json
+{
+  "v": 1,
+  "type": "account.set",
+  "id": "c23",
+  "engine": "claude",
+  "value": "sk-ant-oat01-..."
+}
+```
+
+### `account.delete`
+
+Unlink the sender's AI subscription for one engine.
+
+| field | type | required | notes |
+| --- | --- | --- | --- |
+| `id` | string | no | client correlation id; the Foreman answers with `ack` {re: id} |
+| `engine` | `claude` \| `codex` | yes |  |
+
+```json
+{
+  "v": 1,
+  "type": "account.delete",
+  "id": "c24",
+  "engine": "codex"
 }
 ```
 

@@ -20,6 +20,8 @@ export interface BusMessage {
   from: string; // agent id or "user"
   to: string; // agent id, "user" or "all"
   text: string;
+  /** shared Foreman: the member who wrote it (from "user") */
+  by?: string;
   /** agent ids that have consumed this message */
   readBy: string[];
 }

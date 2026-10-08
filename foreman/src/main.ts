@@ -11,6 +11,40 @@ import { Foreman } from './foreman.js';
 import { ForemanServer } from './server.js';
 import { claimRunFiles, homeRunFile, liveOwner, profileRunFile, releaseRunFiles } from './runfile.js';
 import { isInsideOrEqual } from './util/fsx.js';
+import { ROLES, UserError, UserStore, type UserRole } from './users.js';
+
+const LOOPBACK = /^(127\.\d+\.\d+\.\d+|localhost|::1)$/i;
+
+/** `npm start -- user add|role|remove|list ...`: a shared Foreman's members. */
+function userCommand(cfg: Config, args: string[]): void {
+  const users = new UserStore(cfg.home);
+  const [cmd, name, ...rest] = args;
+  const roleArg = rest.find((a) => !a.startsWith('--')) ?? (rest.includes('--admin') ? 'admin' : rest.includes('--viewer') ? 'viewer' : undefined);
+  try {
+    if (cmd === 'add' && name) {
+      const { member, token } = users.add(name, (roleArg ?? 'member') as UserRole);
+      console.log(`${member.name} (${member.role}) - token, shown once, to give to ${member.name} only:\n\n  ${token}\n`);
+      console.log('In game they connect with AGENTCRAFT_FOREMAN_URL=ws://<server>:<port> and AGENTCRAFT_TOKEN=<token>.');
+      console.log(`Running "user add ${member.name}" again gives a new token (the old one stops working).`);
+    } else if (cmd === 'role' && name && roleArg) {
+      const m = users.setRole(name, roleArg as UserRole);
+      console.log(`${m.name}: ${m.role}`);
+    } else if (cmd === 'remove' && name) {
+      console.log(users.remove(name) ? `${name} removed` : `no member ${name}`);
+    } else if (cmd === 'list' || !cmd) {
+      const all = users.list();
+      if (!all.length) console.log('no members: single-user Foreman (loopback only, no token)');
+      for (const u of all) console.log(`${u.name.padEnd(16)} ${u.role}`);
+    } else {
+      console.log(`usage: user add <name> [${ROLES.join('|')}] | user role <name> <role> | user remove <name> | user list`);
+      process.exitCode = 1;
+    }
+  } catch (e) {
+    if (!(e instanceof UserError)) throw e;
+    console.error(e.message);
+    process.exitCode = 1;
+  }
+}
 
 async function createDemoRepo(cfg: Config, dir: string): Promise<void> {
   const mod = (await import(pathToFileURL(path.join(cfg.projectRoot, 'sandbox', 'create-demo.mjs')).href)) as {
@@ -32,8 +66,19 @@ export async function main(argv: string[]): Promise<void> {
     console.log(HELP);
     return;
   }
+  if (argv[0] === 'user') {
+    userCommand(loadConfig(argv.slice(1).filter((a) => a.startsWith('--'))), argv.slice(1).filter((a) => !a.startsWith('--') || a === '--admin' || a === '--viewer'));
+    return;
+  }
   const cfg = loadConfig(argv);
   const log = consoleLogger('foreman', { debug: cfg.debug, quiet: cfg.quiet });
+  const users = new UserStore(cfg.home);
+  // a Foreman other machines can reach must know who is talking to it
+  if (!LOOPBACK.test(cfg.host) && !users.enabled) {
+    log.error(`--host ${cfg.host} makes the Foreman reachable from other machines: add its members first (npm start -- user add <name> admin)`);
+    process.exitCode = 1;
+    return;
+  }
 
   // one Foreman per profile (two would both write its state.json) - checked before --reset wipes it
   const owner = await liveOwner(profileRunFile(cfg.dataDir));
@@ -62,7 +107,9 @@ export async function main(argv: string[]): Promise<void> {
 
   const foreman = new Foreman({ config: cfg, logger: log });
   const backend = cfg.backend === 'sim' ? new SimBackend(foreman, cfg.sim) : createTeam(foreman, cfg);
-  const server = new ForemanServer(foreman, { host: cfg.host, port: cfg.port, allowBrowserOrigins: cfg.allowBrowserOrigins, validateOutbound: cfg.debug, log });
+  const server = new ForemanServer(foreman, { host: cfg.host, port: cfg.port, allowBrowserOrigins: cfg.allowBrowserOrigins, validateOutbound: cfg.debug, log, users });
+  server.onPresence = () => foreman.setOnline(server.online());
+  if (users.enabled) log.info(`shared Foreman: ${users.list().map((u) => `${u.name} (${u.role})`).join(', ')}`);
 
   try {
     await server.start();

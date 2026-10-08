@@ -292,7 +292,8 @@ export function loadConfig(argv: string[], env: NodeJS.ProcessEnv = process.env)
     home,
     profile,
     dataDir: path.join(home, profile),
-    host: '127.0.0.1',
+    // a shared Foreman listens on the server's (VPN) address; it then needs members (users.ts)
+    host: str(pick('host', 'AGENTCRAFT_HOST')) ?? str(file.host) ?? '127.0.0.1',
     port: num(pick('port', 'AGENTCRAFT_PORT'), 7878),
     repos,
     workspaces,

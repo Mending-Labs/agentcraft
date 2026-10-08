@@ -131,6 +131,7 @@ export const DecisionAnswer = z.object({
   option: z.string().optional().describe('the chosen option label (one of Decision.options)'),
   text: z.string().optional().describe('free-text answer / feedback'),
   ts: Ts,
+  by: z.string().optional().describe('shared Foreman: the member who answered (absent: auto mode or the single user)'),
 });
 export type DecisionAnswer = z.infer<typeof DecisionAnswer>;
 
@@ -205,6 +206,7 @@ export const Goal = z.object({
   progress: z.number().min(0).max(1),
   status: GoalStatus.describe('planning (lead is planning) -> active -> done (every non-cancelled task merged/done); cancelled: every task was cancelled or rejected (back to active if the lead adds a task); failed: planning failed'),
   repoId: Id.optional(),
+  by: z.string().optional().describe("shared Foreman: the member who set the goal; the agents work on it with that member's AI subscription"),
   createdAt: Ts,
   updatedAt: Ts,
 });
@@ -231,6 +233,17 @@ export const ForemanStatus = z.object({
   userName: z.string().optional().describe('the person the team works for, as the agents address them (UI: "<name> answered")'),
   workspaces: z.array(z.string()).optional().describe('folders that are not repos the lead may reorganise (config `workspaces`); a goal that names one needs no repo choice'),
   secrets: z.array(z.string()).optional().describe('names of the secrets in the vault (/secret set); never their values'),
+  members: z
+    .array(
+      z.object({
+        name: z.string(),
+        role: z.enum(['admin', 'member', 'viewer']),
+        online: z.boolean(),
+        accounts: z.array(z.enum(['claude', 'codex'])).describe('AI subscriptions this member linked (/compte)'),
+      }),
+    )
+    .optional()
+    .describe('shared Foreman: the team members, who is connected, and which AI subscriptions each linked'),
   auto: z.boolean().optional().describe('auto mode is on: permissions (except risky ones), lead-approved merges with passing tests, workspace plans and questions are answered without the user'),
 });
 export type ForemanStatus = z.infer<typeof ForemanStatus>;
@@ -291,6 +304,7 @@ export const SnapshotMsg = z.object({
   goals: z.array(Goal).describe('all goals, oldest first'),
   feed: z.array(FeedItem).describe('most recent feed items, oldest first (<= 200)'),
   logs: z.array(AgentLogs).describe('recent log tail per agent (<= 60 entries each)'),
+  you: z.object({ name: z.string(), role: z.enum(['admin', 'member', 'viewer']) }).optional().describe('shared Foreman: who this client is signed in as'),
 });
 export const AgentUpsertMsg = z.object({ ...envelope('agent.upsert'), agent: Agent });
 export const AgentLogMsg = z.object({ ...envelope('agent.log'), agentId: Id, entries: z.array(LogEntry) });
@@ -413,6 +427,14 @@ export const AutoSetMsg = z.object({ ...envelope('auto.set'), enabled: z.boolean
 export const WorkspaceAddMsg = z.object({ ...envelope('workspace.add'), path: z.string().min(1) });
 export const SecretSetMsg = z.object({ ...envelope('secret.set'), name: z.string().min(1), value: z.string().min(1) });
 export const SecretDeleteMsg = z.object({ ...envelope('secret.delete'), name: z.string().min(1) });
+export const AccountEngine = z.enum(['claude', 'codex']);
+export type AccountEngine = z.infer<typeof AccountEngine>;
+export const AccountSetMsg = z.object({
+  ...envelope('account.set'),
+  engine: AccountEngine,
+  value: z.string().min(1).describe('claude: the token from `claude setup-token`; codex: the content of ~/.codex/auth.json after `codex login`'),
+});
+export const AccountDeleteMsg = z.object({ ...envelope('account.delete'), engine: AccountEngine });
 
 export const ClientMessage = z.discriminatedUnion('type', [
   HelloMsg,
@@ -427,6 +449,8 @@ export const ClientMessage = z.discriminatedUnion('type', [
   WorkspaceAddMsg,
   SecretSetMsg,
   SecretDeleteMsg,
+  AccountSetMsg,
+  AccountDeleteMsg,
 ]);
 export type ClientMessage = z.infer<typeof ClientMessage>;
 
@@ -502,6 +526,8 @@ export const CLIENT_MESSAGES = {
   'repo.add': { schema: RepoAddMsg, doc: 'Register a local git repo (console: `/repo add <path>`).' },
   'auto.set': { schema: AutoSetMsg, doc: 'Turn auto mode on or off (console: `/auto on|off`); `foreman.status.auto` follows.' },
   'secret.set': { schema: SecretSetMsg, doc: 'Store a secret (console: `/secret set NAME`, a masked field): encrypted for the user (DPAPI / keychain / Secret Service), never logged nor sent back; the MCP servers whose bearerTokenEnvVar has this name use it.' },
+  'account.set': { schema: AccountSetMsg, doc: "Link the sender's own AI subscription (console: `/compte claude|codex`, a masked field): the goals they set run on it. Encrypted in the vault, never sent back." },
+  'account.delete': { schema: AccountDeleteMsg, doc: "Unlink the sender's AI subscription for one engine." },
   'secret.delete': { schema: SecretDeleteMsg, doc: 'Delete a stored secret (console: `/secret delete NAME`).' },
   'workspace.add': { schema: WorkspaceAddMsg, doc: 'Add a folder the lead may reorganise (console: `/workspace add <path>`; a goal that names a folder adds it too). Kept across restarts; `foreman.status.workspaces` follows.' },
 } as const;

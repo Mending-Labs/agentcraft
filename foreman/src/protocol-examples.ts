@@ -197,4 +197,6 @@ export const CLIENT_EXAMPLES: Ex<ClientMessage> = {
   'workspace.add': { v: 1, type: 'workspace.add', id: 'c20', path: 'D:\Work' },
   'secret.set': { v: 1, type: 'secret.set', id: 'c21', name: 'SEED_MCP_TOKEN', value: '(the token)' },
   'secret.delete': { v: 1, type: 'secret.delete', id: 'c22', name: 'SEED_MCP_TOKEN' },
+  'account.set': { v: 1, type: 'account.set', id: 'c23', engine: 'claude', value: 'sk-ant-oat01-...' },
+  'account.delete': { v: 1, type: 'account.delete', id: 'c24', engine: 'codex' },
 };
