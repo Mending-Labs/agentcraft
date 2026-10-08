@@ -11,6 +11,7 @@
 import path from 'node:path';
 import type { Verdict } from './policy.js';
 import { isInsideOrEqual } from './util/fsx.js';
+import { psReadOnlyProblem } from './psreadonly.js';
 
 export interface AutoConfig {
   enabled: boolean;
@@ -41,10 +42,18 @@ export function parseAuto(v: unknown, enabledOverride?: boolean): AutoConfig {
  * Why a permission prompt must still reach the user in auto mode (undefined: auto may allow it).
  * Risky: process/system commands, recursive changes outside the worktree, writes outside both the
  * worktree and the workspaces, git internals / git environment, links out of the worktree, and
- * anything the read-only lead would change in the user's checkout.
+ * anything the read-only lead would change in the user's checkout (a lead's PowerShell script that
+ * psreadonly.ts proves read-only, within its repo and the workspaces, is fine).
  */
-export function autoRisk(verdict: Extract<Verdict, { action: 'ask' }>, opts: { role: 'lead' | 'worker'; workspaces: string[] }): string | undefined {
-  if (opts.role === 'lead') return 'the lead works read-only in your checkout';
+export function autoRisk(
+  verdict: Extract<Verdict, { action: 'ask' }>,
+  opts: { role: 'lead' | 'worker'; workspaces: string[]; tool?: string; command?: string; leadRoots?: string[] },
+): string | undefined {
+  if (opts.role === 'lead') {
+    if (opts.tool !== 'PowerShell' || !opts.command) return 'the lead works read-only in your checkout';
+    const problem = psReadOnlyProblem(opts.command, opts.leadRoots ?? []);
+    return problem ? `the lead works read-only in your checkout (${problem})` : undefined;
+  }
   if (/process or system command/i.test(verdict.reason)) return 'process or system command';
   if (/\bGIT_|git internals|\.git\b|another repository|changes a repository outside/i.test(verdict.reason)) return 'git outside the worktree';
   if (/--global/.test(verdict.reason)) return 'a global install or setting';

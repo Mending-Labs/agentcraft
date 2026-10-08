@@ -1228,9 +1228,13 @@ function classifyGit(args: string[], sc: SegCtx): J {
     j = merge(j, { ...nj, cwd: undefined, pathsOut: undefined });
   }
 
-  const read = GIT_READ.has(sub) || sub === '';
+  const firstArg = (rest.find((a) => !a.startsWith('-')) ?? '').toLowerCase();
+  // listings that change nothing (handled as read-only further down as well)
+  const listing = (sub === 'worktree' && firstArg === 'list') || (sub === 'remote' && (!firstArg || firstArg === 'get-url'));
+  const read = GIT_READ.has(sub) || sub === '' || listing;
   const gsc: SegCtx = { ...sc, vcwd: gitCwd, cmd: 'git' };
-  if (outsideRepo) {
+  // reading a repository inside a folder the agent may read (the lead's workspaces) needs no prompt
+  if (outsideRepo && !(read && inArea(ctx, outsideRepo, 'r'))) {
     const lower = outsideRepo.toLowerCase();
     j = merge(j, read ? need(`git ${sub} on a repository outside the worktree: ${outsideRepo}`, `Bash:outside:git ${sub}:rtree:${lower}`) : exact(sc.env, `git ${sub} changes a repository outside the worktree: ${outsideRepo}`));
   }

@@ -687,7 +687,13 @@ export class TeamBackend implements Backend {
         return { allow: false, message: verdict.reason };
       }
       if (this.fm.autoFor('permissions')) {
-        const risk = autoRisk(verdict, { role, workspaces: this.fm.workspaces() });
+        const risk = autoRisk(verdict, {
+          role,
+          workspaces: this.fm.workspaces(),
+          tool: toolName,
+          ...(typeof input.command === 'string' ? { command: input.command } : {}),
+          leadRoots: [cwd, ...this.fm.workspaces(), this.fm.memory.dir],
+        });
         if (!risk) {
           this.fm.agentLog(agentId, 'tool', `auto mode allowed: ${describeToolCall(toolName, input)}`);
           return { allow: true };

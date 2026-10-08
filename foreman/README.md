@@ -302,7 +302,9 @@ go on without you. Each kind can be turned off on its own:
 `"auto": {"permissions": true, "merges": true, "workspace": true, "questions": true}`.
 
 - **permissions**: a prompt the policy would ask is allowed, unless it is risky: anything from
-  the lead (read-only in your checkout), process/system commands, recursive changes outside the
+  the lead (read-only in your checkout) except a PowerShell script `src/psreadonly.ts` proves
+  read-only within its repo and the workspaces (read-only cmdlets and git reads only, no method
+  calls, no unknown variables, no paths elsewhere), process/system commands, recursive changes outside the
   worktree, writes outside the worktree and the workspaces, git internals or git pointed at
   another repository, `--global` installs, links out of the worktree. Those still ask. Policy
   denials (git push, ...) are never affected.

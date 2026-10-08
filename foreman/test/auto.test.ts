@@ -5,7 +5,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { agentTools, type ToolHooks } from '../src/agents/tools.js';
 import { autoRisk, parseAuto } from '../src/auto.js';
-import type { Verdict } from '../src/policy.js';
+import { classifyToolUse, type Verdict } from '../src/policy.js';
 import { TRASH_DIR } from '../src/workspace.js';
 import { demoRepo, makeForeman, rmrf, tempDir, testConfig, until, type Harness } from './helpers.js';
 
@@ -38,6 +38,15 @@ describe('autoRisk (which permission prompts still ask)', () => {
     expect(autoRisk(ask('writes', 'Bash:outside:mv:w:D:\\Work\\a'), worker)).toBeUndefined();
     expect(autoRisk(ask('write', 'Write:D:\\Work\\notes'), worker)).toBeUndefined();
   });
+  it.runIf(process.platform === 'win32')('lets the lead run a PowerShell script proven read-only within its repo and workspaces', () => {
+    const lead = { role: 'lead' as const, workspaces: ['D:\\Work'], tool: 'PowerShell', leadRoots: ['D:\\Repo', 'D:\\Work'] };
+    const v = ask('the command name comes from a variable or substitution and cannot be checked', 'lead:Bash:exact:1');
+    expect(autoRisk(v, { ...lead, command: "Get-ChildItem -LiteralPath 'D:\\Work' -Directory | ForEach-Object { $f = $_; git -C $f.FullName status --short }" })).toBeUndefined();
+    expect(autoRisk(v, { ...lead, command: "Get-ChildItem 'D:\\Work' | Remove-Item -Recurse" })).toMatch(/Remove-Item/);
+    expect(autoRisk(v, { ...lead, command: "Get-Content 'C:\\Users\\me\\.ssh\\id_rsa'" })).toMatch(/outside/);
+    expect(autoRisk(v, { ...lead, tool: 'Bash', command: 'ls D:/Work' })).toMatch(/lead/);
+  });
+
   it('keeps the risky ones for the user', () => {
     expect(autoRisk(ask('anything'), { role: 'lead', workspaces: [] })).toMatch(/lead/);
     expect(autoRisk(ask('process or system command (taskkill)', 'Bash:exact:1'), worker)).toMatch(/system/);
@@ -47,6 +56,26 @@ describe('autoRisk (which permission prompts still ask)', () => {
     expect(autoRisk(ask('editing git internals (.git): x', 'Write:.git:x'), worker)).toMatch(/git/);
     expect(autoRisk(ask("points git at another repository, work tree or index (it could move the user's checked-out branch)", 'Bash:exact:2'), worker)).toMatch(/git/);
     expect(autoRisk(ask('npm install --global changes tools outside the worktree', 'Bash:exact:3'), worker)).toMatch(/global/);
+  });
+});
+
+describe('the lead reading git repos in its workspaces (policy, auto mode or not)', () => {
+  it('git status / worktree list there need no prompt; elsewhere, or changing them, still ask', async () => {
+    const ws = fs.realpathSync(tempDir('ac-ws-'));
+    const repoDir = await demoRepo();
+    try {
+      const inWs = path.join(ws, 'other');
+      fs.cpSync(repoDir, inWs, { recursive: true });
+      // no temp dirs: the test folders live in the temp dir, which the policy treats as scratch space
+      const ctx = { role: 'lead' as const, cwd: repoDir, readDirs: [ws], tempDirs: [] };
+      expect(classifyToolUse('Bash', { command: `git -C "${inWs}" status --short` }, ctx).action).toBe('allow');
+      expect(classifyToolUse('Bash', { command: `git -C "${inWs}" worktree list --porcelain` }, ctx).action).toBe('allow');
+      expect(classifyToolUse('Bash', { command: `git -C "${inWs}" worktree remove x` }, ctx).action).not.toBe('allow');
+      expect(classifyToolUse('Bash', { command: `git -C "${inWs}" status` }, { ...ctx, readDirs: [] }).action).not.toBe('allow');
+    } finally {
+      rmrf(ws);
+      rmrf(path.dirname(repoDir));
+    }
   });
 });
 
