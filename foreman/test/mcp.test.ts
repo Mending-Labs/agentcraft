@@ -75,6 +75,14 @@ describe('McpCatalog', () => {
   });
 });
 
+describe('secret names', () => {
+  it('match whatever the case ("gitlab" serves bearerTokenEnvVar "Gitlab")', () => {
+    const vault = new Map([['gitlab', 'tok']]);
+    const cat = new McpCatalog(parseMcp({ gitlab: { url: 'https://gl.example/api/v4/mcp', bearerTokenEnvVar: 'Gitlab', lead: 'write', workers: 'read' } }), silentLogger, fetch, (n) => vault.get(n), () => [...vault.keys()]);
+    expect(cat.forRole('lead').map(([n, , t]) => [n, t])).toEqual([['gitlab', 'tok']]);
+  });
+});
+
 describe('one server per project (secretPrefix)', () => {
   const TPL = { seed: { url: 'https://seed.example/api/mcp', secretPrefix: 'AC_TPL_SEED_', lead: 'write', workers: 'read' } };
 

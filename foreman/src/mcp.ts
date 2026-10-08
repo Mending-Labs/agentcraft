@@ -117,11 +117,16 @@ export class McpCatalog {
     }
   }
 
-  /** A server's token: the vault's secret named like its bearerTokenEnvVar, else that variable. */
+  /**
+   * A server's token: the vault's secret named like its bearerTokenEnvVar (whatever the case:
+   * "gitlab" serves "Gitlab"), else that environment variable.
+   */
   token(s: McpServerConfig): string | undefined {
     if (!s.bearerTokenEnvVar) return undefined;
     this.captureEnv();
-    return this.secret(s.bearerTokenEnvVar) ?? this.envTokens.get(s.bearerTokenEnvVar.toUpperCase());
+    const want = s.bearerTokenEnvVar.toUpperCase();
+    const stored = this.secretNames().find((n) => n.toUpperCase() === want) ?? s.bearerTokenEnvVar;
+    return this.secret(stored) ?? this.envTokens.get(want);
   }
 
   /** Names of the token variables: kept out of every agent's environment. */
