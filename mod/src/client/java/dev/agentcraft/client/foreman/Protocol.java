@@ -106,6 +106,9 @@ public final class Protocol {
 	public static final String MERGE = "Merge";
 	public static final String REQUEST_CHANGES = "Request changes";
 	public static final String REJECT = "Reject";
+	/** a merge refused because of the user's uncommitted changes (MERGE_LOCAL_OPTIONS in protocol.md) */
+	public static final String COMMIT_THEN_MERGE = "Commit my changes, then merge";
+	public static final String STASH_MERGE_RESTORE = "Stash, merge, restore";
 	public static final String ALLOW_ONCE = "Allow once";
 	public static final String ALWAYS_ALLOW = "Always allow for this agent";
 	public static final String DENY = "Deny";

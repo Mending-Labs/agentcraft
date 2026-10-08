@@ -526,5 +526,7 @@ export const ENTITY_SCHEMAS = {
 
 /** Merge decision option labels (exact strings). */
 export const MERGE_OPTIONS = ['Merge', 'Request changes', 'Reject'] as const;
+/** Added to a merge decision refused because the user's checkout has uncommitted changes: the Foreman commits them (as the user) or stashes them around the merge. Never answered by auto mode. */
+export const MERGE_LOCAL_OPTIONS = ['Commit my changes, then merge', 'Stash, merge, restore'] as const;
 /** Permission decision option labels (exact strings). */
 export const PERMISSION_OPTIONS = ['Allow once', 'Always allow for this agent', 'Deny'] as const;

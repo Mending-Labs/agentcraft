@@ -118,13 +118,14 @@ export class DecisionQueue {
   }
 
   /** Re-open an answered decision (e.g. merge was refused because the checkout is dirty). */
-  reopen(id: string, context?: string): Decision {
+  reopen(id: string, context?: string, options?: string[]): Decision {
     const d = this.get(id);
     if (!d) throw new DecisionError(`no decision ${id}`);
     d.status = 'open';
     delete d.answer;
     this.unsettled.delete(id);
     if (context !== undefined) d.context = context;
+    if (options) d.options = [...options];
     this.touch(d);
     return d;
   }

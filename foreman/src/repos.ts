@@ -18,6 +18,7 @@ import path from 'node:path';
 import type { Ctx } from './context.js';
 import { parseUnifiedDiff, type ParsedDiff } from './diff.js';
 import type { CiStatus, Decision, Repo, Worktree } from './protocol.js';
+import { MERGE_LOCAL_OPTIONS } from './protocol.js';
 import { withGitSafety } from './gitsafety.js';
 import { ensureDir, isInsideOrEqual } from './util/fsx.js';
 import { agentGitIdentity, git, gitConfigGet, gitOut, identityEnv, listWorktrees } from './util/git.js';
@@ -562,7 +563,9 @@ export class RepoManager {
 
   private async doMerge(decision: Decision, commitMessage?: string): Promise<MergeResult> {
     if (decision.kind !== 'merge') throw new RepoError('merge requires a merge decision', 'refused');
-    if (decision.status !== 'answered' || decision.answer?.option !== 'Merge') {
+    // "Merge", or one of the answers that first deal with the user's own changes, then merge
+    const approves = decision.answer?.option === 'Merge' || (MERGE_LOCAL_OPTIONS as readonly string[]).includes(decision.answer?.option ?? '');
+    if (decision.status !== 'answered' || !approves) {
       throw new RepoError(`decision ${decision.id} does not approve a merge`, 'refused');
     }
     if (!decision.repoId || !decision.worktree) throw new RepoError(`decision ${decision.id} names no repo/worktree`, 'refused');

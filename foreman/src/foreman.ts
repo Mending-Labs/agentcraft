@@ -26,6 +26,8 @@ import type {
   Station,
   Task,
 } from './protocol.js';
+import { MERGE_LOCAL_OPTIONS, MERGE_OPTIONS } from './protocol.js';
+import { git } from './util/git.js';
 import { RepoError, RepoManager } from './repos.js';
 import { Store } from './store.js';
 import { TaskError, TaskGraph } from './taskgraph.js';
@@ -474,16 +476,64 @@ export class Foreman {
     return d;
   }
 
+  /**
+   * The user chose to deal with their own uncommitted changes in the target checkout: commit them
+   * (as the user, with their message if they typed one) or stash them for the merge's duration.
+   */
+  private async prepareCheckout(d: Decision, mode: 'commit' | 'stash', label: string): Promise<'ok' | 'stashed' | string> {
+    const repo = d.repoId ? this.repos.get(d.repoId) : undefined;
+    if (!repo) return 'no repository for this merge';
+    if (mode === 'commit') {
+      const msg = d.answer?.text?.trim() || `wip: local changes kept before merging ${label}`;
+      const r = await git(repo.path, ['commit', '-a', '-m', msg], { allowFail: true });
+      if (r.code !== 0) return `could not commit your changes: ${(r.stderr || r.stdout).trim().split('\n').slice(-2).join(' ')}`;
+      this.bus.feed('merge', `Committed your local changes in ${repo.name}: ${msg}`, { agentId: 'user' });
+      return 'ok';
+    }
+    const r = await git(repo.path, ['stash', 'push', '-m', `agentcraft: before merging ${label}`], { allowFail: true });
+    if (r.code !== 0) return `could not stash your changes: ${(r.stderr || r.stdout).trim().split('\n').slice(-2).join(' ')}`;
+    this.bus.feed('merge', `Your local changes in ${repo.name} are set aside for the merge`, { agentId: 'user' });
+    return 'stashed';
+  }
+
+  /** Put the user's stashed changes back after the merge (or its failure). */
+  private async restoreStash(d: Decision, label: string): Promise<void> {
+    const repo = d.repoId ? this.repos.get(d.repoId) : undefined;
+    if (!repo) return;
+    const r = await git(repo.path, ['stash', 'pop'], { allowFail: true });
+    if (r.code === 0) {
+      this.bus.feed('merge', `Your local changes in ${repo.name} are back`, { agentId: 'user' });
+      return;
+    }
+    const msg = `Your local changes could not be put back on top of the merge (they touch the same lines): they are kept in the stash "agentcraft: before merging ${label}". In ${repo.path}: git stash pop, then resolve.`;
+    this.bus.feed('error', msg, { agentId: 'user' });
+    this.notify('warn', truncate(msg, 200), d.id);
+  }
+
   private async applyMergeAnswer(d: Decision): Promise<void> {
     const task = d.taskId ? this.tasks.get(d.taskId) : undefined;
     const option = d.answer?.option;
-    if (option === 'Merge') {
+    const local = option === MERGE_LOCAL_OPTIONS[0] ? 'commit' : option === MERGE_LOCAL_OPTIONS[1] ? 'stash' : undefined;
+    if (option === 'Merge' || local) {
+      const label = task?.id ?? d.id;
+      let stashed = false;
+      if (local) {
+        const prep = await this.prepareCheckout(d, local, label);
+        if (prep !== 'ok' && prep !== 'stashed') {
+          this.decisions.reopen(d.id, `${(d.context ?? '').replace(/\n*Merge refused: [\s\S]*$/, '')}\n\nMerge refused: ${prep}`);
+          this.bus.feed('error', `Merge refused: ${prep}`, { agentId: d.agentId });
+          return;
+        }
+        stashed = prep === 'stashed';
+      }
       try {
         const res = await this.repos.merge(d, task ? { commitMessage: `${task.id}: ${task.title}${task.summary ? `\n\n${task.summary}` : ''}` } : {});
         if (task) this.tasks.setStatus(task.id, 'done', { viaMerge: true, force: task.status !== 'review' });
         this.bus.feed('merge', `Merged ${res.branch} into ${res.base} (${res.sha}, ${res.files} file${res.files === 1 ? '' : 's'})`, { agentId: d.agentId });
         this.notify('info', `Merged ${res.branch} into ${res.base}`);
+        if (stashed) await this.restoreStash(d, label);
       } catch (e) {
+        if (stashed) await this.restoreStash(d, label);
         if (e instanceof RepoError && e.code === 'empty' && task && d.repoId && d.worktree) {
           // nothing to merge (a report or investigation): the task is simply done
           await this.repos.abandon(d.repoId, d.worktree, `agentcraft: ${task.id} (no changes)`).catch((err) => this.log.warn(`abandon: ${(err as Error).message}`));
@@ -513,7 +563,9 @@ export class Foreman {
         }
         this.log.warn(`merge for ${d.id} refused: ${reason}`);
         const base = (d.context ?? '').replace(/\n*Merge refused: [\s\S]*$/, '');
-        this.decisions.reopen(d.id, `${base}${base ? '\n\n' : ''}Merge refused: ${reason}`);
+        // refused because of the user's own uncommitted changes: offer to deal with them in one click
+        const options = e instanceof RepoError && e.code === 'dirty' ? [...MERGE_OPTIONS, ...MERGE_LOCAL_OPTIONS] : undefined;
+        this.decisions.reopen(d.id, `${base}${base ? '\n\n' : ''}Merge refused: ${reason}`, options);
         this.bus.feed('error', `Merge refused: ${reason}`, { agentId: d.agentId });
         this.notify('warn', `Merge refused: ${truncate(reason, 160)}`, d.id);
         // broadcast the repo as it is now (e.g. dirty=true), so the mod can show why

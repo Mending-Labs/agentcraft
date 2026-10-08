@@ -97,6 +97,11 @@ public final class DecisionQueue {
 					return Tr.t("decisions.option_merge");
 				case Protocol.REQUEST_CHANGES:
 					return Tr.t("decisions.option_request_changes");
+				// offered when the merge was refused because of the user's own uncommitted changes
+				case Protocol.COMMIT_THEN_MERGE:
+					return Tr.t("decisions.option_commit_then_merge");
+				case Protocol.STASH_MERGE_RESTORE:
+					return Tr.t("decisions.option_stash_merge_restore");
 				case Protocol.REJECT:
 					return Tr.t("decisions.option_reject");
 				default:

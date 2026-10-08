@@ -661,6 +661,8 @@ public final class ConsoleCommands {
 			case "modifications", "modifs", "modifier" -> Protocol.REQUEST_CHANGES;
 			case "fusionner" -> Protocol.MERGE;
 			case "rejeter" -> Protocol.REJECT;
+			case "committer", "commit" -> Protocol.COMMIT_THEN_MERGE;
+			case "stash", "stasher" -> Protocol.STASH_MERGE_RESTORE;
 			default -> null;
 		};
 		if (alias != null && opts.contains(alias)) {
