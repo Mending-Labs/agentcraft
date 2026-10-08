@@ -222,6 +222,7 @@ export const ForemanStatus = z.object({
   costUsd: z.number().optional().describe('claude: estimated spend of this profile (sum over all sessions, survives restarts)'),
   userName: z.string().optional().describe('the person the team works for, as the agents address them (UI: "<name> answered")'),
   workspaces: z.array(z.string()).optional().describe('folders that are not repos the lead may reorganise (config `workspaces`); a goal that names one needs no repo choice'),
+  secrets: z.array(z.string()).optional().describe('names of the secrets in the vault (/secret set); never their values'),
   auto: z.boolean().optional().describe('auto mode is on: permissions (except risky ones), lead-approved merges with passing tests, workspace plans and questions are answered without the user'),
 });
 export type ForemanStatus = z.infer<typeof ForemanStatus>;
@@ -402,6 +403,8 @@ export const DiffRequestMsg = z.object({
 export const RepoAddMsg = z.object({ ...envelope('repo.add'), path: z.string().min(1) });
 export const AutoSetMsg = z.object({ ...envelope('auto.set'), enabled: z.boolean() });
 export const WorkspaceAddMsg = z.object({ ...envelope('workspace.add'), path: z.string().min(1) });
+export const SecretSetMsg = z.object({ ...envelope('secret.set'), name: z.string().min(1), value: z.string().min(1) });
+export const SecretDeleteMsg = z.object({ ...envelope('secret.delete'), name: z.string().min(1) });
 
 export const ClientMessage = z.discriminatedUnion('type', [
   HelloMsg,
@@ -414,6 +417,8 @@ export const ClientMessage = z.discriminatedUnion('type', [
   RepoAddMsg,
   AutoSetMsg,
   WorkspaceAddMsg,
+  SecretSetMsg,
+  SecretDeleteMsg,
 ]);
 export type ClientMessage = z.infer<typeof ClientMessage>;
 
@@ -488,6 +493,8 @@ export const CLIENT_MESSAGES = {
   'diff.request': { schema: DiffRequestMsg, doc: 'Ask for the structured diff of a worktree. Answered with `diff` (same requestId).' },
   'repo.add': { schema: RepoAddMsg, doc: 'Register a local git repo (console: `/repo add <path>`).' },
   'auto.set': { schema: AutoSetMsg, doc: 'Turn auto mode on or off (console: `/auto on|off`); `foreman.status.auto` follows.' },
+  'secret.set': { schema: SecretSetMsg, doc: 'Store a secret (console: `/secret set NAME`, a masked field): encrypted for the user (DPAPI / keychain / Secret Service), never logged nor sent back; the MCP servers whose bearerTokenEnvVar has this name use it.' },
+  'secret.delete': { schema: SecretDeleteMsg, doc: 'Delete a stored secret (console: `/secret delete NAME`).' },
   'workspace.add': { schema: WorkspaceAddMsg, doc: 'Add a folder the lead may reorganise (console: `/workspace add <path>`; a goal that names a folder adds it too). Kept across restarts; `foreman.status.workspaces` follows.' },
 } as const;
 

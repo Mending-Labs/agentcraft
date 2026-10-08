@@ -195,4 +195,6 @@ export const CLIENT_EXAMPLES: Ex<ClientMessage> = {
   'repo.add': { v: 1, type: 'repo.add', id: 'c18', path: 'C:\\Projects\\agentcraft\\sandbox\\demo-app' },
   'auto.set': { v: 1, type: 'auto.set', id: 'c19', enabled: true },
   'workspace.add': { v: 1, type: 'workspace.add', id: 'c20', path: 'D:\Work' },
+  'secret.set': { v: 1, type: 'secret.set', id: 'c21', name: 'SEED_MCP_TOKEN', value: '(the token)' },
+  'secret.delete': { v: 1, type: 'secret.delete', id: 'c22', name: 'SEED_MCP_TOKEN' },
 };

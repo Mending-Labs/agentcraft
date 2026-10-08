@@ -816,7 +816,8 @@ export class TeamBackend implements Backend {
           prompt,
           instructions: systemAppend,
           ...(resume ? { resume } : {}),
-          env: agentEnv(process.env, { agentId, cwd }),
+          // no MCP token variables: an agent that could read a token could bypass its access
+          env: agentEnv(this.fm.mcp.scrub(process.env), { agentId, cwd }),
           writableRoots: await this.writableRoots(role, job),
           abort,
           turn,

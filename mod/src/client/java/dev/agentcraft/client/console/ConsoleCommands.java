@@ -42,7 +42,7 @@ public final class ConsoleCommands {
 	// ------------------------------------------------------------------ intents
 
 	public sealed interface Intent permits Goal, Message, Answer, RepoAdd, Repos, AgentAction, TaskAction, ShowDiff, Status, Help, Decide, Clear,
-		Sound, Auto, WorkspaceCmd, FollowUp, Theme, Invalid, Empty {
+		Sound, Auto, WorkspaceCmd, FollowUp, Theme, SecretCmd, Invalid, Empty {
 	}
 
 	/** {@code repoId} null = the Foreman's default; {@code choices} non-empty = ask which repo first. */
@@ -98,6 +98,10 @@ public final class ConsoleCommands {
 	public record Theme(@Nullable Boolean dark) implements Intent {
 	}
 
+	/** action: list | set | delete. The value is never typed here: set opens a masked field. */
+	public record SecretCmd(String action, @Nullable String name) implements Intent {
+	}
+
 	/** {@code addPath} null: list the workspaces. */
 	public record WorkspaceCmd(@Nullable String addPath) implements Intent {
 	}
@@ -134,6 +138,7 @@ public final class ConsoleCommands {
 			new Command("status", "/status", Tr.t("console.cmd_status_help")),
 			new Command("workspace", "/workspace add <" + Tr.t("console.usage_path") + ">", Tr.t("console.cmd_workspace_help")),
 			new Command("auto", "/auto on|off", Tr.t("console.cmd_auto_help")),
+			new Command("secret", "/secret set|delete NAME", Tr.t("console.cmd_secret_help")),
 			new Command("theme", "/theme dark|light", Tr.t("console.cmd_theme_help")),
 			new Command("sound", "/sound on|off", Tr.t("console.cmd_sound_help")),
 			new Command("clear", "/clear", Tr.t("console.cmd_clear_help")),
@@ -322,6 +327,12 @@ public final class ConsoleCommands {
 			case "clear", "cls" -> new Clear();
 			case "sound", "sounds", "mute" -> parseSound(cmd, args);
 			case "auto" -> parseAuto(args);
+			// a value typed on the console line would stay in its draft and history: refuse it, never send it
+			case "secret", "secrets" -> args.size() > 2 && args.get(0).equalsIgnoreCase("set") ? new Invalid(Tr.t("console.err_secret_inline"))
+				: args.isEmpty() || args.get(0).equalsIgnoreCase("list") ? new SecretCmd("list", null)
+				: args.size() == 2 && (args.get(0).equalsIgnoreCase("set") || args.get(0).equalsIgnoreCase("delete")) && args.get(1).matches("[A-Za-z_][A-Za-z0-9_]{0,63}")
+					? new SecretCmd(args.get(0).toLowerCase(Locale.ROOT), args.get(1))
+					: new Invalid(Tr.t("console.err_secret_usage"));
 			case "theme" -> args.isEmpty() ? new Theme(null) : switch (args.get(0).toLowerCase(Locale.ROOT)) {
 				case "dark", "sombre", "on" -> new Theme(true);
 				case "light", "clair", "off" -> new Theme(false);
@@ -657,6 +668,11 @@ public final class ConsoleCommands {
 	public static @Nullable String describe(Intent in, ForemanState s) {
 		return switch (in) {
 			case Goal g -> g.repoId() == null ? Tr.t("console.desc_new_goal") : Tr.t("console.desc_new_goal_repo", repoName(g.repoId(), s));
+			case SecretCmd sc -> switch (sc.action()) {
+				case "set" -> Tr.t("console.desc_secret_set", sc.name());
+				case "delete" -> Tr.t("console.desc_secret_delete", sc.name());
+				default -> Tr.t("console.desc_secret_list");
+			};
 			case Theme th -> th.dark() == null ? Tr.t("console.desc_theme_status") : th.dark() ? Tr.t("console.desc_theme_dark") : Tr.t("console.desc_theme_light");
 			case FollowUp f -> Tr.t("console.desc_followup", (f.goalText().length() > 36 ? f.goalText().substring(0, 35) + "…" : f.goalText()));
 			case Message m -> m.to().equals("all") ? Tr.t("console.desc_message_everyone") : Tr.t("console.desc_message", displayName(m.to(), s));

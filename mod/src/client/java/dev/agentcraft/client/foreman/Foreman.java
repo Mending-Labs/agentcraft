@@ -89,6 +89,15 @@ public final class Foreman {
 		return link.send(ForemanJson.msg("workspace.add").put("path", path).json());
 	}
 
+	/** Store a secret in the Foreman's vault (encrypted for the user); never logged, never sent back. */
+	public static CompletableFuture<Ack> setSecret(String name, String value) {
+		return link.send(ForemanJson.msg("secret.set").put("name", name).put("value", value).json());
+	}
+
+	public static CompletableFuture<Ack> deleteSecret(String name) {
+		return link.send(ForemanJson.msg("secret.delete").put("name", name).json());
+	}
+
 	public static CompletableFuture<Ack> addRepo(String path) {
 		return link.send(ForemanJson.msg("repo.add").put("path", path).json());
 	}

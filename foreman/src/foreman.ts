@@ -33,6 +33,7 @@ import { setUserName, userName } from './user.js';
 import type { AutoConfig, AutoKind } from './auto.js';
 import { dirsInText, workspaceRefusal } from './workspace.js';
 import { McpCatalog } from './mcp.js';
+import { SecretError, SecretVault } from './secrets.js';
 import { isInsideOrEqual } from './util/fsx.js';
 import { truncate } from './util/text.js';
 
@@ -86,6 +87,8 @@ export class Foreman {
   readonly auto: AutoConfig;
   /** external MCP servers given to the team (config "mcp") and their tool catalogues */
   readonly mcp: McpCatalog;
+  /** secrets typed in game (/secret set), encrypted at rest (DPAPI / keychain), decrypted in memory only */
+  readonly secrets: SecretVault;
 
   private listeners = new Set<(m: Outbound) => void>();
   private logBuffers = new Map<string, LogEntry[]>();
@@ -116,7 +119,10 @@ export class Foreman {
     if (ws.length) this.status.workspaces = ws;
     this.auto = { ...opts.config.auto };
     this.status.auto = this.auto.enabled;
-    this.mcp = new McpCatalog(opts.config.mcp ?? {}, this.log);
+    this.secrets = new SecretVault(opts.config.home);
+    this.mcp = new McpCatalog(opts.config.mcp ?? {}, this.log, fetch, (n) => this.secrets.get(n));
+    const secretNames = this.secrets.names();
+    if (secretNames.length) this.status.secrets = secretNames;
     if (opts.config.backend === 'sim') this.status.message = 'Simulated team (sim backend)';
     this.initRoster();
     this.decisions.onCreated((d, input) => this.onDecisionCreated(d, input));
@@ -611,6 +617,26 @@ export class Foreman {
       }
       case 'workspace.add':
         return { path: this.addWorkspace(msg.path) };
+      case 'secret.set': {
+        // the value is never logged, echoed or put in the feed: only the name
+        try {
+          await this.secrets.set(msg.name, msg.value);
+        } catch (e) {
+          if (e instanceof SecretError) throw new ClientError(e.message);
+          throw e;
+        }
+        this.setStatus({ secrets: this.secrets.names() });
+        this.bus.feed('system', `Secret ${msg.name} stored (encrypted for your account)`);
+        this.mcp.reset();
+        void this.mcp.load();
+        return { name: msg.name };
+      }
+      case 'secret.delete': {
+        const removed = await this.secrets.delete(msg.name);
+        this.setStatus({ secrets: this.secrets.names() });
+        if (removed) this.bus.feed('system', `Secret ${msg.name} deleted`);
+        return { name: msg.name, removed };
+      }
       case 'auto.set':
         this.setAuto(msg.enabled);
         return { auto: this.auto.enabled };
@@ -704,7 +730,9 @@ export class Foreman {
 
   async start(backend: Backend): Promise<void> {
     this.backend = backend;
-    // which tools of the external MCP servers only read (for "read" access): fetched in the background
+    // decrypt the stored secrets into memory, then learn which tools of the MCP servers only read
+    const locked = await this.secrets.unlock();
+    if (locked.length) this.log.warn(`could not decrypt the secrets ${locked.join(", ")} (stored by another Windows account or machine?): set them again with /secret set`);
     void this.mcp.load();
     for (const p of this.config.repos) {
       try {

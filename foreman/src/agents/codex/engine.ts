@@ -162,6 +162,13 @@ export class CodexEngine implements Engine {
     return out;
   }
 
+  /** The MCP tokens this role's servers need, as environment variables for the app-server only. */
+  private mcpTokens(role: Role): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (const [, s, token] of this.fm.mcp.forRole(role)) if (s.bearerTokenEnvVar && token) out[s.bearerTokenEnvVar] = token;
+    return out;
+  }
+
   /** Config overrides for an agent thread (see the header). `userConfig`: the effective config. */
   private threadConfig(userConfig: any, spec: TurnSpec, serverEnv: NodeJS.ProcessEnv): Record<string, unknown> {
     const off = (names: string[]) => Object.fromEntries(names.map((n) => [n, { enabled: false }]));
@@ -175,7 +182,7 @@ export class CodexEngine implements Engine {
       include_apps_instructions: false,
       // Preserve both the git-safety variables Codex normally filters and any values isolated
       // for the app-server itself (LOCALAPPDATA on Windows).
-      shell_environment_policy: { set: { ...envDelta(spec.env), ...envDelta(spec.env, serverEnv) } },
+      shell_environment_policy: { set: { ...envDelta(spec.env), ...envDelta(spec.env, serverEnv) }, exclude: this.fm.mcp.tokenVars() },
       sandbox_workspace_write: { writable_roots: spec.writableRoots ?? [], network_access: false },
       ...(effort ? { model_reasoning_effort: effort } : {}),
     };
@@ -186,7 +193,9 @@ export class CodexEngine implements Engine {
     if (!bin) throw new Error(CODEX_NOT_FOUND);
     const { agentId, role, cwd, abort } = spec;
     const mapper = new CodexStreamMapper(this.fm, agentId, cwd, role);
-    const serverEnv = this.serverEnv(spec.env);
+    // the app-server reads the MCP tokens (bearer_token_env_var) from its own environment; its
+    // shells never get them (shell_environment_policy.exclude below)
+    const serverEnv = { ...this.serverEnv(spec.env), ...this.mcpTokens(spec.role) };
     const server = new AppServer(bin, {
       cwd,
       env: serverEnv,

@@ -56,7 +56,53 @@ export class McpCatalog {
     readonly servers: Record<string, McpServerConfig>,
     private log: Logger,
     private fetchFn: typeof fetch = fetch,
-  ) {}
+    /** a stored secret by name (the vault); checked before the environment */
+    private secret: (name: string) => string | undefined = () => undefined,
+  ) {
+    this.captureEnv();
+  }
+
+  /** Tokens taken out of the Foreman's environment (see captureEnv). */
+  private envTokens = new Map<string, string>();
+
+  /**
+   * Move the token variables out of process.env into memory: nothing the Foreman starts (agents,
+   * their tests, git) can inherit them any more.
+   */
+  private captureEnv(): void {
+    for (const v of this.tokenVars()) {
+      for (const k of Object.keys(process.env)) {
+        if (k.toUpperCase() !== v.toUpperCase()) continue;
+        const val = process.env[k];
+        if (val) this.envTokens.set(v, val);
+        delete process.env[k];
+      }
+    }
+  }
+
+  /** A server's token: the vault's secret named like its bearerTokenEnvVar, else that variable. */
+  token(s: McpServerConfig): string | undefined {
+    if (!s.bearerTokenEnvVar) return undefined;
+    this.captureEnv();
+    return this.secret(s.bearerTokenEnvVar) ?? this.envTokens.get(s.bearerTokenEnvVar);
+  }
+
+  /** Names of the token variables: kept out of every agent's environment. */
+  tokenVars(): string[] {
+    return Object.values(this.servers).flatMap((s) => (s.bearerTokenEnvVar ? [s.bearerTokenEnvVar] : []));
+  }
+
+  /** `env` without the token variables (an agent could otherwise read a token and bypass its access). */
+  scrub(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+    const vars = new Set(this.tokenVars().map((v) => v.toUpperCase()));
+    if (!vars.size) return env;
+    return Object.fromEntries(Object.entries(env).filter(([k]) => !vars.has(k.toUpperCase())));
+  }
+
+  /** Forget a server's catalogue (its token changed): the next load() fetches it again. */
+  reset(): void {
+    this.tools.clear();
+  }
 
   access(server: string, role: 'lead' | 'worker'): McpAccess {
     const s = this.servers[server];
@@ -68,9 +114,9 @@ export class McpCatalog {
     const out: Array<[string, McpServerConfig, string | undefined]> = [];
     for (const [name, s] of Object.entries(this.servers)) {
       if (this.access(name, role) === 'none') continue;
-      const token = s.bearerTokenEnvVar ? process.env[s.bearerTokenEnvVar] : undefined;
+      const token = this.token(s);
       if (s.bearerTokenEnvVar && !token) {
-        this.log.warn(`MCP server ${name}: ${s.bearerTokenEnvVar} is not set, so the team does not get it (set it, then restart AgentCraft)`);
+        this.log.warn(`MCP server ${name}: no ${s.bearerTokenEnvVar} (in game: /secret set ${s.bearerTokenEnvVar}), so the team does not get it`);
         continue;
       }
       out.push([name, s, token]);
@@ -114,8 +160,8 @@ export class McpCatalog {
 
   private async fetchTools(name: string): Promise<McpTool[]> {
     const s = this.servers[name]!;
-    const token = s.bearerTokenEnvVar ? process.env[s.bearerTokenEnvVar] : undefined;
-    if (s.bearerTokenEnvVar && !token) throw new Error(`${s.bearerTokenEnvVar} is not set`);
+    const token = this.token(s);
+    if (s.bearerTokenEnvVar && !token) throw new Error(`no ${s.bearerTokenEnvVar}`);
     let session: string | undefined;
     let id = 0;
     const call = async (method: string, params: unknown, notify = false): Promise<any> => {

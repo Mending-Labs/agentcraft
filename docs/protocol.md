@@ -188,6 +188,7 @@ Exact option labels: merge decisions use `Merge`, `Request changes`, `Reject`; p
 | `costUsd` | number | no | claude: estimated spend of this profile (sum over all sessions, survives restarts) |
 | `userName` | string | no | the person the team works for, as the agents address them (UI: "<name> answered") |
 | `workspaces` | string[] | no | folders that are not repos the lead may reorganise (config `workspaces`); a goal that names one needs no repo choice |
+| `secrets` | string[] | no | names of the secrets in the vault (/secret set); never their values |
 | `auto` | boolean | no | auto mode is on: permissions (except risky ones), lead-approved merges with passing tests, workspace plans and questions are answered without the user |
 
 ### <a id="agentlogs"></a>AgentLogs
@@ -1045,6 +1046,44 @@ Turn auto mode on or off (console: `/auto on|off`); `foreman.status.auto` follow
   "type": "auto.set",
   "id": "c19",
   "enabled": true
+}
+```
+
+### `secret.set`
+
+Store a secret (console: `/secret set NAME`, a masked field): encrypted for the user (DPAPI / keychain / Secret Service), never logged nor sent back; the MCP servers whose bearerTokenEnvVar has this name use it.
+
+| field | type | required | notes |
+| --- | --- | --- | --- |
+| `id` | string | no | client correlation id; the Foreman answers with `ack` {re: id} |
+| `name` | string | yes |  |
+| `value` | string | yes |  |
+
+```json
+{
+  "v": 1,
+  "type": "secret.set",
+  "id": "c21",
+  "name": "SEED_MCP_TOKEN",
+  "value": "(the token)"
+}
+```
+
+### `secret.delete`
+
+Delete a stored secret (console: `/secret delete NAME`).
+
+| field | type | required | notes |
+| --- | --- | --- | --- |
+| `id` | string | no | client correlation id; the Foreman answers with `ack` {re: id} |
+| `name` | string | yes |  |
+
+```json
+{
+  "v": 1,
+  "type": "secret.delete",
+  "id": "c22",
+  "name": "SEED_MCP_TOKEN"
 }
 ```
 

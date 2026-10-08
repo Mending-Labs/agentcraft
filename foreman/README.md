@@ -305,7 +305,12 @@ tracker, say), declare it in `config.json` with the access each role gets:
                    "lead": "write", "workers": "read" } }
 ```
 
-The token stays in the environment variable (set it before starting AgentCraft). `write` gives
+The token is best typed in game: `/secret set SEED_MCP_TOKEN` opens a masked field, and the
+Foreman keeps it in its vault (src/secrets.ts): encrypted for your account (Windows DPAPI, the macOS
+keychain, or the Linux Secret Service) in `<home>/secrets.json`, decrypted in memory only, never
+logged nor sent back (`/secret` lists the names). An environment variable of that name works too;
+the Foreman takes it out of its own environment at start. Either way no agent process, test run or
+shell ever gets the token: only the MCP connection does. `write` gives
 every tool of the server, `read` only its read-only tools (the server's `tools/list` annotation
 `readOnlyHint`, else the tool name: get_, list_, search_...), `none` (default) nothing. Claude agents:
 the policy allows or refuses each call; a refused write tells the worker to ask the lead. Codex

@@ -3,6 +3,7 @@ package dev.agentcraft.client.console;
 import dev.agentcraft.client.console.ConsoleCommands.AgentAction;
 import dev.agentcraft.client.console.ConsoleCommands.Auto;
 import dev.agentcraft.client.console.ConsoleCommands.Theme;
+import dev.agentcraft.client.console.ConsoleCommands.SecretCmd;
 import dev.agentcraft.client.console.ConsoleCommands.FollowUp;
 import dev.agentcraft.client.console.ConsoleCommands.WorkspaceCmd;
 import dev.agentcraft.client.console.ConsoleCommands.Answer;
@@ -155,6 +156,21 @@ public final class ConsoleActions {
 			}
 			case Auto au -> track(Foreman.setAuto(au.on()), raw, restore,
 				ack -> Tr.t(au.on() ? "console.auto_on" : "console.auto_off") + " " + UiBits.CHECK, Tr.t("console.auto_sending") + "…");
+			case SecretCmd sc when sc.action().equals("set") -> {
+				ConsoleLog.remember(raw);
+				clearFeedback();
+				net.minecraft.client.Minecraft.getInstance().gui.setScreen(new SecretScreen(sc.name()));
+				return After.CLEAR;
+			}
+			case SecretCmd sc when sc.action().equals("delete") -> track(Foreman.deleteSecret(sc.name()), raw, restore,
+				ack -> Tr.t("console.secret_deleted", sc.name()) + " " + UiBits.CHECK, Tr.t("console.secret_deleting") + "…");
+			case SecretCmd sc -> {
+				ConsoleLog.remember(raw);
+				List<String> names = s.status() == null ? List.of() : s.status().secrets();
+				ConsoleLog.add(Tone.INFO, names.isEmpty() ? Tr.t("console.secrets_none") : Tr.t("console.secrets_line", String.join(", ", names)));
+				clearFeedback();
+				return After.CLEAR;
+			}
 			case Theme th -> {
 				ConsoleLog.remember(raw);
 				if (th.dark() != null) {
