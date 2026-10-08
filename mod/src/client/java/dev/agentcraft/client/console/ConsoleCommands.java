@@ -42,7 +42,7 @@ public final class ConsoleCommands {
 	// ------------------------------------------------------------------ intents
 
 	public sealed interface Intent permits Goal, Message, Answer, RepoAdd, Repos, AgentAction, TaskAction, ShowDiff, Status, Help, Decide, Clear,
-		Sound, Auto, WorkspaceCmd, FollowUp, Invalid, Empty {
+		Sound, Auto, WorkspaceCmd, FollowUp, Theme, Invalid, Empty {
 	}
 
 	/** {@code repoId} null = the Foreman's default; {@code choices} non-empty = ask which repo first. */
@@ -94,6 +94,10 @@ public final class ConsoleCommands {
 	public record Auto(@Nullable Boolean on) implements Intent {
 	}
 
+	/** {@code dark} null: show the theme. */
+	public record Theme(@Nullable Boolean dark) implements Intent {
+	}
+
 	/** {@code addPath} null: list the workspaces. */
 	public record WorkspaceCmd(@Nullable String addPath) implements Intent {
 	}
@@ -130,6 +134,7 @@ public final class ConsoleCommands {
 			new Command("status", "/status", Tr.t("console.cmd_status_help")),
 			new Command("workspace", "/workspace add <" + Tr.t("console.usage_path") + ">", Tr.t("console.cmd_workspace_help")),
 			new Command("auto", "/auto on|off", Tr.t("console.cmd_auto_help")),
+			new Command("theme", "/theme dark|light", Tr.t("console.cmd_theme_help")),
 			new Command("sound", "/sound on|off", Tr.t("console.cmd_sound_help")),
 			new Command("clear", "/clear", Tr.t("console.cmd_clear_help")),
 			new Command("help", "/help", Tr.t("console.cmd_help_help")));
@@ -317,6 +322,11 @@ public final class ConsoleCommands {
 			case "clear", "cls" -> new Clear();
 			case "sound", "sounds", "mute" -> parseSound(cmd, args);
 			case "auto" -> parseAuto(args);
+			case "theme" -> args.isEmpty() ? new Theme(null) : switch (args.get(0).toLowerCase(Locale.ROOT)) {
+				case "dark", "sombre", "on" -> new Theme(true);
+				case "light", "clair", "off" -> new Theme(false);
+				default -> new Invalid(Tr.t("console.err_theme_usage"));
+			};
 			case "workspace", "workspaces", "ws" -> parseWorkspace(rest, args);
 			case "goal", "new", "nouveau", "nouvel" -> rest.isEmpty() ? new Invalid(Tr.t("console.err_goal_after")) : goal(rest, s);
 			default -> new Invalid(Tr.t("console.err_unknown_command", cmd));
@@ -647,6 +657,7 @@ public final class ConsoleCommands {
 	public static @Nullable String describe(Intent in, ForemanState s) {
 		return switch (in) {
 			case Goal g -> g.repoId() == null ? Tr.t("console.desc_new_goal") : Tr.t("console.desc_new_goal_repo", repoName(g.repoId(), s));
+			case Theme th -> th.dark() == null ? Tr.t("console.desc_theme_status") : th.dark() ? Tr.t("console.desc_theme_dark") : Tr.t("console.desc_theme_light");
 			case FollowUp f -> Tr.t("console.desc_followup", (f.goalText().length() > 36 ? f.goalText().substring(0, 35) + "…" : f.goalText()));
 			case Message m -> m.to().equals("all") ? Tr.t("console.desc_message_everyone") : Tr.t("console.desc_message", displayName(m.to(), s));
 			case Answer a -> Tr.t("console.desc_answer", a.decision().id(), a.option() != null ? a.option() : Tr.t("console.desc_free_text"));

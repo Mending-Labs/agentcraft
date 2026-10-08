@@ -2,6 +2,7 @@ package dev.agentcraft.client.console;
 
 import dev.agentcraft.client.console.ConsoleCommands.AgentAction;
 import dev.agentcraft.client.console.ConsoleCommands.Auto;
+import dev.agentcraft.client.console.ConsoleCommands.Theme;
 import dev.agentcraft.client.console.ConsoleCommands.FollowUp;
 import dev.agentcraft.client.console.ConsoleCommands.WorkspaceCmd;
 import dev.agentcraft.client.console.ConsoleCommands.Answer;
@@ -154,6 +155,15 @@ public final class ConsoleActions {
 			}
 			case Auto au -> track(Foreman.setAuto(au.on()), raw, restore,
 				ack -> Tr.t(au.on() ? "console.auto_on" : "console.auto_off") + " " + UiBits.CHECK, Tr.t("console.auto_sending") + "…");
+			case Theme th -> {
+				ConsoleLog.remember(raw);
+				if (th.dark() != null) {
+					dev.agentcraft.client.ui.UiStyle.setDark(th.dark());
+				}
+				ConsoleLog.add(Tone.INFO, Tr.t("console.theme_line", Tr.t(dev.agentcraft.client.ui.UiStyle.dark() ? "console.theme_dark" : "console.theme_light")));
+				clearFeedback();
+				return After.CLEAR;
+			}
 			case Sound so -> {
 				ConsoleLog.remember(raw);
 				if (so.on() != null) {
